@@ -3,18 +3,22 @@ title: "MongoDB删除重复数据和唯一索引"
 published: 2019-06-03
 description: "1.根据pid分组并统计数量，group只会返回参与分组的字段，使用addToSet在返回结果数组中增加\\id字段"
 tags: ["MongoDB"]
-category: ""
+category: "数据库"
 draft: false
 ---
 
-MongoDB 版本V4.0.9
+MongoDB 版本 V4.0.9
+
+> **时效注记（2026 更新）**：本文写于 MongoDB 4.0 时期，其中 `ensureIndex` 和 `remove` 两个 API 后来都被移除了，下面的代码已同步更新为现行写法，并在各节标注了差异。
 
 ## 删除MongoDB删除重复数据
 
-```plain
+```javascript
 db.CompanyId.aggregate([{$group:{ _id:{'pid':'$pid'},count:{$sum: 1},dups: {$addToSet: '$_id'}}}, {$match: {count: {$gt: 1}}}]).forEach(function(doc){
-doc.dups.shift();db.CompanyId.remove({_id: {$in: doc.dups}});})
+doc.dups.shift();db.CompanyId.deleteMany({_id: {$in: doc.dups}});})
 ```
+
+> 原文用的是 `db.CompanyId.remove()`。`remove()` 自 MongoDB 3.2 起被 `deleteOne()` / `deleteMany()` 取代，新版驱动和 mongosh 中已移除，这里按批量删除的语义改成了 `deleteMany`。
 
 1.根据pid分组并统计数量，`$group`只会返回参与分组的字段，使用`$addToSet`在返回结果数组中增加\_id字段
 
@@ -34,19 +38,21 @@ doc.dups.shift();db.CompanyId.remove({_id: {$in: doc.dups}});})
 
 ## MongoDB唯一索引
 
-在ensureIndex 命令中指定”unique:true”即可创建唯一索引  
+在 createIndex 命令中指定 `unique: true` 即可创建唯一索引
 
-```plain
-db.CompanyId.ensureIndex({字段1: 1, 字段2: 1}, {unique: true});
+```javascript
+db.CompanyId.createIndex({字段1: 1, 字段2: 1}, {unique: true});
 ```
 
 字段1：1，中的1表示升序，-1表示降序
 
+> 原文用的是 `ensureIndex`。该方法自 MongoDB 3.0 起就是 `createIndex` 的别名，**5.0 已彻底移除**，在新版本上执行会直接报错。另外要注意：如果集合里已有重复数据，创建唯一索引会失败——所以本文前半部分的去重要先做。
+
 ## MongoDB 查询两个字段的值相同的数据
 
-因为MongoDB 不是关系型数据库，不可以直接使用”…Where 字段A=字段B”的方式来查找字段相同的条目，但可以使用“`$where`”  
+因为MongoDB 不是关系型数据库，不可以直接使用”…Where 字段A=字段B”的方式来查找字段相同的条目，但可以使用“`$where`”
 
-```plain
+```javascript
 db.foo.find({"$where":function(){
  for(var current in this){
    for(var other in this){
@@ -58,3 +64,11 @@ db.foo.find({"$where":function(){
  return false;
 }})
 ```
+
+> `$where` 现在已**不推荐使用**：它需要为每个文档启动 JavaScript 解释器，无法利用索引，全集合扫描，性能很差；而且执行任意 JS 有注入风险。现在优先用 `$expr` 配合聚合表达式，例如比较两个已知字段是否相等：
+>
+> ```javascript
+> db.foo.find({$expr: {$eq: ["$字段A", "$字段B"]}})
+> ```
+>
+> 本文这个「任意两个字段相等」的需求因为要遍历未知字段名，`$expr` 表达不了，更适合放到应用层或用聚合管道的 `$objectToArray` 处理。

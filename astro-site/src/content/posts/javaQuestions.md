@@ -1,9 +1,9 @@
 ---
 title: "Java常见面试题"
 published: 2020-04-14
-description: "================================"
+description: "Java 面试题整理：设计模式、并发、JVM、集合、Spring、数据库、中间件。2020 年整理，部分结论已加时效注记。"
 tags: ["Java"]
-category: ""
+category: "Java"
 draft: false
 ---
 
@@ -28,16 +28,16 @@ DCL（Double Check Lock）单例
 
 ```java
 class Mgr{
-    private static volatile Mgr Instance;
+    private static volatile Mgr instance;
     public static Mgr getInstance(){
-        if(Instance == null){
+        if(instance == null){
             synchronized(Mgr.class){
-                if(Instance == null){
+                if(instance == null){
                     instance = new Mgr();
                 }
             }
         }
-        return Instance;
+        return instance;
     }
 }
 ```
@@ -828,10 +828,9 @@ Files. createDirectory()：创建文件夹。
 Files. delete()：删除一个文件或目录。  
 Files. copy()：复制文件。  
 Files. move()：移动文件。  
-Files. size()：查看文件个数。  
-Files. read()：读取文件。  
+Files. size()：返回文件的字节大小。  
+Files. readAllBytes() / readAllLines()：读取文件内容。  
 Files. write()：写入文件。  
-···
 
 ====================================================================
 
@@ -1590,6 +1589,8 @@ Ribbon：实现负载均衡，从一个服务的多台机器中选择一台。
 Hystrix：提供线程池，不同的服务走不同的线程池，实现了不同服务调用的隔离，避免了服务雪崩的问题。  
 Zuul：网关管理，由 Zuul 网关转发请求给对应的服务。
 
+> **时效注记（2026 更新）**：上面这套 Netflix 全家桶已整体进入维护/停更状态，Spring Cloud 2020 版起陆续移除。现在的对应关系是：Eureka → Nacos / Consul；Ribbon → Spring Cloud LoadBalancer；Hystrix → Resilience4j / Sentinel；Zuul → Spring Cloud Gateway。只有 **Feign**（现为 OpenFeign）还在主线使用。国内大量团队直接用 Spring Cloud Alibaba（Nacos + Sentinel + Seata）。
+
 ====================================================================
 
 # 十二. Hibernate模块
@@ -1887,6 +1888,8 @@ RabbitMQ 对集群的停止的顺序是有要求的，应该先关闭内存节�
 
 kafka 不能脱离 zookeeper 单独使用，因为 kafka 使用 zookeeper  
 管理和协调 kafka 的节点服务器。
+
+> **时效注记（2026 更新）**：此结论已过时。Kafka 2.8（2021）引入 KRaft 模式，用内置的 Raft 协议替代 ZooKeeper 管理元数据；3.3 起 KRaft 生产可用；**4.0 已彻底移除 ZooKeeper**。现在的正确答案是：新版本 Kafka 不但可以脱离 ZooKeeper，而且已经不再支持它。面试时答出 KRaft 会明显加分。
 
 ## 153.kafka 有几种数据保留的策略？
 

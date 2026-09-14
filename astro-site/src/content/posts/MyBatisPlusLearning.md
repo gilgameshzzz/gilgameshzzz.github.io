@@ -3,11 +3,13 @@ title: "MyBatisPlus入门"
 published: 2020-04-14
 description: "1、导入对应的依赖 2、研究依赖如何配置 3、代码如何编写 4、提高扩展技术能力"
 tags: ["Java", "MyBatisPlus"]
-category: ""
+category: "Java"
 draft: false
 ---
 
 # 快速入门
+
+> **时效注记（2026 更新）**：本文基于 MyBatis-Plus 3.3.1（2020）。核心的 CRUD、条件构造器、分页、逻辑删除等用法至今有效，但**代码生成器部分已完全重写**——文中的 `AutoGenerator` + `GlobalConfig` / `StrategyConfig` 这套 setter API 在 **3.5.1 之后已被移除**，现在改用 `FastAutoGenerator` 链式调用。另有两处：`IdType.ID_WORKER` 自 3.3.0 起弃用（改用 `IdType.ASSIGN_ID`）；`setSwagger2()` 已移除。具体见下方代码生成器一节的说明。
 
 使用第三方组件：  
   
@@ -17,9 +19,7 @@ draft: false
 4、提高扩展技术能力  
   
 
-```plain
-步骤
-```
+步骤：
 
 1、创建数据库，2、创建数据表，3、编写项目，初始化项目，4、导入依赖,注意**不要同时导入Mybatis和MyBatis-plus**  
 引入 spring-boot-starter、spring-boot-starter-test、mybatis-plus-boot-starter、lombok、h2 依赖：  
@@ -40,7 +40,7 @@ draft: false
 <dependency>
   <groupId>com.baomidou</groupId>
   <artifactId>mybatis-plus-boot-starter</artifactId>
-  <version>3.3.1.tmp</version>
+  <version>3.3.1</version>
 </dependency>
 ```
 
@@ -72,7 +72,7 @@ MyBatis-Plus 从 3.0.3 之后移除了代码生成器与模板引擎的默认依
 <dependency>
   <groupId>com.baomidou</groupId>
   <artifactId>mybatis-plus-generator</artifactId>
-  <version>3.3.1.tmp</version>
+  <version>3.3.1</version>
 </dependency>
 ```
 
@@ -161,3 +161,27 @@ public class AutoGeneratorCode {
     }
 }
 ```
+
+> **上面这套 API 在 MyBatis-Plus 3.5.1 之后已被移除**，新版改用 `FastAutoGenerator` 链式配置，等价写法大致是：
+>
+> ```java
+> FastAutoGenerator.create(URL, USERNAME, PASSWORD)
+>     .globalConfig(builder -> builder
+>         .author("Amadeus")
+>         .outputDir(System.getProperty("user.dir") + "/src/main/java")
+>         .disableOpenDir())
+>     .packageConfig(builder -> builder
+>         .parent("com.xkcoding.helloworld")
+>         .moduleName("blog"))
+>     .strategyConfig(builder -> builder
+>         .addInclude("user")
+>         .addTablePrefix("user_")
+>         .entityBuilder().enableLombok().logicDeleteColumnName("deleted")
+>         .controllerBuilder().enableRestStyle().enableHyphenStyle())
+>     .templateEngine(new VelocityTemplateEngine())
+>     .execute();
+> ```
+>
+> 另外文中 `gc.setIdType(IdType.ID_WORKER)` 里的 `ID_WORKER` 自 3.3.0 起弃用，应改为 `IdType.ASSIGN_ID`（同样是雪花算法）；`gc.setSwagger2(true)` 已移除，新版用 `.enableSwagger()`。
+>
+> 依赖坐标也变了：MySQL 8.0.31 起官方驱动从 `mysql:mysql-connector-java` 迁到了 `com.mysql:mysql-connector-j`，旧坐标已不再更新。
