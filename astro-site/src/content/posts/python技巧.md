@@ -3,7 +3,7 @@ title: "python的技巧和方法"
 published: 2019-02-28
 description: "l例如：获取当前文件路径。 os版： python print(os.path.dirname(file)) print(os.getcwd()) pathlib版： python print(pathlib.Path.…"
 tags: ["python"]
-category: ""
+category: "Python"
 draft: false
 ---
 
@@ -59,7 +59,7 @@ YAML 是专门用来写配置文件的语言，非常简洁和强大，远比 JS
 YAML在python语言中有PyYAML安装包。
 前提安装第三方库
 ```python
-pip install pyaml
+pip install pyyaml
 pip install ruamel.yaml
 ```
 关于yaml的读取知识网上一堆了我就不说了，这里主要说写入。
@@ -310,8 +310,8 @@ print(e)
 a="safr3.14"
 print(a[-4:])
 #上面可以改为
-pie=slice(len(a)-4,len(a))
-print(a)
+pie = slice(len(a)-4, len(a))
+print(a[pie])   # 和 a[-4:] 等价，但切片有了名字，可复用、可读
 ```
 # 11 获取出现频率高的元素
 ```python
@@ -330,6 +330,6 @@ print(c)
 print(c2)
 print(c3)
 
-# 使用c.most_comman(n)获取前n出现频率最高的元素,列表元组类型
+# 使用c.most_common(n)获取前n出现频率最高的元素,列表元组类型
 print(c.most_common(4))
 ```

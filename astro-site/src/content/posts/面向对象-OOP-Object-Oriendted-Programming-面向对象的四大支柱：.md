@@ -3,7 +3,7 @@ title: "面向对象-OOP"
 published: 2019-02-28
 description: "面向对象 -OOP(Object Oriendted Programming) 面向对象的四大支柱："
 tags: ["OOP"]
-category: ""
+category: "Python"
 draft: false
 ---
 

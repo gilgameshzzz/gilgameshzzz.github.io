@@ -3,7 +3,7 @@ title: "python定时运行代码"
 published: 2019-03-01
 description: "这种方式最简单，只要在循环里加入需要执行的代码，然后sleep后在执行。"
 tags: ["python"]
-category: ""
+category: "Python"
 draft: false
 ---
 

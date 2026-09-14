@@ -3,7 +3,7 @@ title: "Java集合，泛型，spring注解、事务的一些问题"
 published: 2020-04-24
 description: "Java的集合类主要由两个接口派生而出：Collection和Map,Collection和Map是Java集合框架的根接口。代表了两种不同的数据结构：集合和映射表。"
 tags: ["Java"]
-category: ""
+category: "Java"
 draft: false
 ---
 
@@ -44,10 +44,10 @@ public static void main(String[] args)
         list.add("java");
         for(Iterator<String> it=list.iterator();it.hasNext();)
         {
-            System.out.println(it.next());
-            if(xxx){
-              list.remove();//翻车写法
-              it.remove();//正确写法
+            String item = it.next();
+            if("python".equals(item)){
+              // list.remove(item);  // 翻车写法：下次 it.next() 会抛 ConcurrentModificationException
+              it.remove();           // 正确写法
             }
         }
     }
@@ -57,7 +57,7 @@ public static void main(String[] args)
 
 java.util.ConcurrentModificationException  
 在集合内部维护一个字段modCount用于记录集合被修改的次数，每当集合内部结构发生变化(add,remove，set)时，modCount+1。　　  
-在迭代器内部也维护一个字段expectedModCount，同样记录当前集合修改的次数，初始化为集合的modCount值。当我们在调用Iterator进行遍历操作时，如果有其他线程修改list会出现modCount!=expectedModCount的情况，就会报并发修改异常java.util.ConcurrentModificationException![ConcurrentModificationException](/img/ConcurrentModificationException.png)
+在迭代器内部也维护一个字段expectedModCount，同样记录当前集合修改的次数，初始化为集合的modCount值。调用Iterator遍历时，每次next()都会检查modCount和expectedModCount是否相等，不等就抛出并发修改异常java.util.ConcurrentModificationException。**最典型的场景恰恰是单线程**——自己在for循环里调了list.remove()，集合的modCount变了而迭代器的expectedModCount没变。多线程下别的线程改集合同样会触发。注意它是fail-fast机制，只保证尽快发现问题，不保证一定能检测到。![ConcurrentModificationException](/img/ConcurrentModificationException.png)
 
 ## 集合的排序
 

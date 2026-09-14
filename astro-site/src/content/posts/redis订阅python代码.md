@@ -3,7 +3,7 @@ title: "redis订阅python代码"
 published: 2019-02-28
 description: "def listen(self): for item in self.crawlseeds.listen(): if item'type' != 'message': continue meta = str(item'd…"
 tags: ["Redis"]
-category: ""
+category: "中间件"
 draft: false
 ---
 

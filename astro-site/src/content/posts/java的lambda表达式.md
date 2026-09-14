@@ -3,13 +3,13 @@ title: "java lambda表达式"
 published: 2020-05-30
 description: "Lambda表达式：引入函数式编程的风格，不是所有的引用数据类型都可以使用lambda表达式 只有SAM接口（函数式接口）类型的形参，变量才可以赋值为Lambda表达式。 函数式接口：SAM(Single Abstrac…"
 tags: ["java", "lambda"]
-category: ""
+category: "Java"
 draft: false
 ---
 
 Lambda表达式：引入函数式编程的风格，不是所有的引用数据类型都可以使用lambda表达式  
 只有SAM接口（函数式接口）类型的形参，变量才可以赋值为Lambda表达式。  
-函数式接口：SAM(Single Abstract Method)表示该接口**只有一个抽象方法**的接口。当然这个接口可以有默认方法和静态方法等成员。如Runable、Comparable, Iterable、reflect、FileFilter
+函数式接口：SAM(Single Abstract Method)表示该接口**只有一个抽象方法**的接口。当然这个接口可以有默认方法和静态方法等成员。如Runnable、Callable、Comparable、Comparator、FileFilter
 
 JDK1.8建议，这样的接口加一个注解标记@FunctionalInterface
 
@@ -36,6 +36,7 @@ public class TestConsumer{
         // forEach 方法就是等价于foreach循环
         list.forEach(t -> System.out.println(t));
     }
+}
 ```
 
 ### 二、供给型接口 抽象方法：无参有返回值
@@ -87,7 +88,7 @@ Predicate<T> boolean test(T t)
 ```plain
 BiPredicate<T,U>  boolean        test(T t,U u)
 DoublePredicate  boolean         test(double value)
-ntPredicate        boolean         test(int value)
+IntPredicate        boolean         test(int value)
 LongPredicate      boolean         test(long value)
 ```
 

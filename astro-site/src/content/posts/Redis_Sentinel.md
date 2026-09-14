@@ -3,7 +3,7 @@ title: "Redis Sentinel哨兵"
 published: 2019-05-09
 description: "该方案由一个或多个Sentinel实例组成的Sentinel系统可以监视任意多个主服务器，以及这些主服务器属下的所有从服务器，并在被监视的主服务器进行下线状态时，自动将下线主服务器属下的某个从服务器升级为新的主服务器，然…"
 tags: ["Redis"]
-category: ""
+category: "中间件"
 draft: false
 ---
 
@@ -44,7 +44,7 @@ dir "/tmp"
 sentinel monitor mymaster 127.0.0.1 6379 2 
 sentinel down-after-milliseconds mymaster 5000
 sentinel failover-timeout mymaster 6000
-sentinel config-epoch mymaster 7
+
 sentinel parallel-syncs mymaster 1
 ```
 

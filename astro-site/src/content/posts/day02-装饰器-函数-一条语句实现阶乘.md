@@ -3,7 +3,7 @@ title: "装饰器、函数、一条语句实现阶乘"
 published: 2019-02-28
 description: "filter -->map --> reduce"
 tags: ["python"]
-category: ""
+category: "Python"
 draft: false
 ---
 
@@ -62,47 +62,57 @@ Python既支持面向对象编程，也支持函数式编程
 
 一条语句求阶乘
 
-``` python
-fn = lambda n: functools.reduce(int.__mul__, range(1,n+1))
+```python
+import functools
+
+fn = lambda n: functools.reduce(int.__mul__, range(1, n + 1))
 ```
 
 heapq内置模块  提供基于堆的优先排序算法
 
 ```python
 import heapq
-list1[1,4,5,63,24]
-heapq.nsmallest(list1,n)  #最小的n个
-heapq.nlargest(list1,3)		#最大的n个
 
+list1 = [1, 4, 5, 63, 24]
+heapq.nsmallest(3, list1)   # 最小的 3 个，注意 n 在前
+heapq.nlargest(3, list1)    # 最大的 3 个
 ```
 
-全排列
+组合（从 n 个里取 k 个，不计顺序）
 
-```
+```python
 import itertools
+
 for val in itertools.combinations('abcde', 3):
-	print (val)
+    print(val)
+```
+
+全排列用 `permutations`——它计顺序，`('a','b')` 和 `('b','a')` 算两个：
+
+```python
+for val in itertools.permutations('abc'):
+    print(val)
 ```
 
 笛卡尔积
 
-```
-for val in itertools.product('ABCD',123):
-	print(val)
+```python
+for val in itertools.product('ABCD', '123'):
+    print(val)
 ```
 
 装饰器
 
 ```python
 from functools import wraps
+
 def record(func):
-	@wraps(func)
-	def wrapper(*args, **kwargs):
-	
-		ret_value = func(*args, *kwargs)
-		return ret_value
-		
-	return wrapper
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        ret_value = func(*args, **kwargs)
+        return ret_value
+
+    return wrapper
 ```
 
 带参数的装饰器

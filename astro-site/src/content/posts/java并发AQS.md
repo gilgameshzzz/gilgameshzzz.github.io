@@ -3,7 +3,7 @@ title: "Java并发-AQS-ReentrantLock"
 published: 2020-04-22
 description: "在synchronized未优化之前，我们在编码中使用最多的同步工具类应该是ReentrantLock类，ReentrantLock拥有优化后synchronized关键字的性能，又提供了更多的灵活性。相比synchro…"
 tags: ["Java", "并发"]
-category: ""
+category: "Java"
 draft: false
 ---
 
@@ -238,6 +238,6 @@ state变量是一个`volatile`修饰的`int`类型变量，这样就保证了这
 
 6、如果最终成功获取了锁，线程会从lock()方法返回，继续往下执行；否则，线程会阻塞等待。
 
-[参考链接1-掘金](https://juejin.im/post/5b7235e951882560ed075893#heading-2)
+[参考链接1-掘金](https://juejin.cn/post/5b7235e951882560ed075893#heading-2)
 
-[参考链接2-掘金](https://juejin.im/post/5e9d3f01518825739b2d4866#heading-16)
+[参考链接2-掘金](https://juejin.cn/post/5e9d3f01518825739b2d4866#heading-16)
