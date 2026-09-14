@@ -13,14 +13,14 @@ hexo_blog/node_modules/
 hexo_blog/public/
 hexo_blog/db.json
 
-merge_posts.py
-rescue_posts.py
-to_astro.py
-verify_posts.py
-fix_posts.py
-merge-report.json
-rescue-report.json
-rescued/
-posts/
-assets/
-新建文本文档.txt
+/merge_posts.py
+/rescue_posts.py
+/to_astro.py
+/verify_posts.py
+/fix_posts.py
+/merge-report.json
+/rescue-report.json
+/rescued/
+/posts/
+/assets/
+/新建文本文档.txt
