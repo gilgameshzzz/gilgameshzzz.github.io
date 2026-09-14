@@ -1,0 +1,229 @@
+---
+import I18nKey from "../../i18n/i18nKey";
+import { i18n } from "../../i18n/translation";
+import { getTagList } from "../../utils/content-utils";
+import { getTagUrl } from "../../utils/url-utils";
+import WidgetLayout from "./WidgetLayout.astro";
+
+const tags = await getTagList();
+
+interface Props {
+	class?: string;
+	style?: string;
+}
+const className = Astro.props.class;
+const style = Astro.props.style;
+
+// 按文章数归一化,用于决定字号与亮度
+const maxCount = tags.reduce((m, t) => Math.max(m, t.count), 1);
+const items = tags.map((t) => ({
+	name: t.name.trim(),
+	href: getTagUrl(t.name),
+	count: t.count,
+	weight: t.count / maxCount,
+}));
+---
+<WidgetLayout name={i18n(I18nKey.tags)} id="tag-cloud" class={className} style={style}>
+    <tag-cloud-3d class="block">
+        <div class="tag-sphere relative w-full h-[15rem] select-none" aria-label="3D tag cloud">
+            {items.map((t) => (
+                <a
+                    href={t.href}
+                    class="tag-item absolute left-1/2 top-1/2 whitespace-nowrap will-change-transform
+                           transition-colors hover:!text-[var(--primary)]"
+                    data-weight={t.weight}
+                    title={`${t.name} · ${t.count}`}
+                    aria-label={`View all posts with the ${t.name} tag`}
+                >{t.name}</a>
+            ))}
+        </div>
+    </tag-cloud-3d>
+
+    <!-- 无 JS / 降级时的扁平回退,同时保证爬虫能读到链接 -->
+    <noscript>
+        <div class="flex gap-2 flex-wrap">
+            {items.map((t) => <a href={t.href} class="text-sm text-50">#{t.name}</a>)}
+        </div>
+    </noscript>
+</WidgetLayout>
+
+<style>
+    .tag-sphere {
+        perspective: 600px;
+        transform-style: preserve-3d;
+        cursor: grab;
+    }
+    .tag-sphere:active {
+        cursor: grabbing;
+    }
+    .tag-item {
+        /* JS 接管前先藏起来,避免所有标签堆在中心闪一下 */
+        opacity: 0;
+        transform: translate(-50%, -50%);
+        color: var(--primary);
+        font-weight: 600;
+        line-height: 1;
+        padding: 2px 4px;
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .tag-sphere {
+            /* 不做球体动画时退回普通换行排布 */
+            height: auto !important;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            perspective: none;
+        }
+        .tag-item {
+            position: static !important;
+            opacity: 1 !important;
+            transform: none !important;
+            font-size: 0.875rem !important;
+        }
+    }
+</style>
+
+<script>
+interface Item {
+    el: HTMLElement;
+    // 单位球面上的坐标
+    x: number;
+    y: number;
+    z: number;
+    weight: number;
+}
+
+class TagCloud3D extends HTMLElement {
+    items: Item[] = [];
+    radius = 0;
+    // 当前角速度,鼠标离开后会缓慢衰减回基础自转
+    speedX = 0.0016;
+    speedY = 0.0022;
+    angleX = 0;
+    angleY = 0;
+    raf = 0;
+    reduced = false;
+    sphere: HTMLElement | null = null;
+    hovering = false;
+
+    connectedCallback() {
+        this.reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        if (this.reduced) return;
+
+        this.sphere = this.querySelector<HTMLElement>(".tag-sphere");
+        if (!this.sphere) return;
+
+        const els = Array.from(this.querySelectorAll<HTMLElement>(".tag-item"));
+        if (els.length === 0) return;
+
+        // 斐波那契球面分布: 比随机撒点均匀得多,不会出现空洞和结块
+        const n = els.length;
+        const golden = Math.PI * (3 - Math.sqrt(5));
+        this.items = els.map((el, i) => {
+            const y = 1 - (i / Math.max(n - 1, 1)) * 2;
+            const r = Math.sqrt(Math.max(1 - y * y, 0));
+            const theta = golden * i;
+            return {
+                el,
+                x: Math.cos(theta) * r,
+                y,
+                z: Math.sin(theta) * r,
+                weight: Number.parseFloat(el.dataset.weight || "0.5"),
+            };
+        });
+
+        this.measure();
+        this.sphere.addEventListener("pointermove", this.onPointerMove);
+        this.sphere.addEventListener("pointerleave", this.onPointerLeave);
+        window.addEventListener("resize", this.measure);
+        document.addEventListener("visibilitychange", this.onVisibility);
+
+        this.raf = requestAnimationFrame(this.tick);
+    }
+
+    disconnectedCallback() {
+        cancelAnimationFrame(this.raf);
+        this.sphere?.removeEventListener("pointermove", this.onPointerMove);
+        this.sphere?.removeEventListener("pointerleave", this.onPointerLeave);
+        window.removeEventListener("resize", this.measure);
+        document.removeEventListener("visibilitychange", this.onVisibility);
+    }
+
+    measure = () => {
+        if (!this.sphere) return;
+        const w = this.sphere.clientWidth;
+        const h = this.sphere.clientHeight;
+        // 留出边距,避免长标签被容器裁掉
+        this.radius = Math.min(w, h) / 2 - 18;
+    };
+
+    onVisibility = () => {
+        if (document.hidden) {
+            cancelAnimationFrame(this.raf);
+        } else {
+            this.raf = requestAnimationFrame(this.tick);
+        }
+    };
+
+    onPointerMove = (e: PointerEvent) => {
+        if (!this.sphere) return;
+        const rect = this.sphere.getBoundingClientRect();
+        // 鼠标离中心越远转得越快,方向跟手
+        const dx = (e.clientX - rect.left - rect.width / 2) / rect.width;
+        const dy = (e.clientY - rect.top - rect.height / 2) / rect.height;
+        this.hovering = true;
+        this.speedY = dx * 0.012;
+        this.speedX = -dy * 0.012;
+    };
+
+    onPointerLeave = () => {
+        this.hovering = false;
+    };
+
+    tick = () => {
+        if (!this.hovering) {
+            // 缓慢收敛回基础自转,避免撒手后突然变速
+            this.speedX += (0.0016 - this.speedX) * 0.04;
+            this.speedY += (0.0022 - this.speedY) * 0.04;
+        }
+
+        this.angleX += this.speedX;
+        this.angleY += this.speedY;
+
+        const sinX = Math.sin(this.angleX);
+        const cosX = Math.cos(this.angleX);
+        const sinY = Math.sin(this.angleY);
+        const cosY = Math.cos(this.angleY);
+
+        for (const it of this.items) {
+            // 绕 X 轴
+            const y1 = it.y * cosX - it.z * sinX;
+            const z1 = it.y * sinX + it.z * cosX;
+            // 绕 Y 轴
+            const x2 = it.x * cosY - z1 * sinY;
+            const z2 = it.x * sinY + z1 * cosY;
+
+            // z2 ∈ [-1, 1],1 表示最靠近观察者
+            const depth = (z2 + 1) / 2;
+            const scale = 0.72 + depth * 0.5;
+            // 字号同时受文章数和景深影响
+            const size = (0.78 + it.weight * 0.34) * scale;
+            const opacity = 0.38 + depth * 0.62;
+
+            it.el.style.transform =
+                `translate(-50%, -50%) translate3d(${x2 * this.radius}px, ${y1 * this.radius}px, 0)`;
+            it.el.style.fontSize = `${size.toFixed(3)}rem`;
+            it.el.style.opacity = opacity.toFixed(3);
+            // 背面的标签不该被点到
+            it.el.style.pointerEvents = z2 < -0.1 ? "none" : "auto";
+            it.el.style.zIndex = String(Math.round(depth * 100));
+        }
+
+        this.raf = requestAnimationFrame(this.tick);
+    };
+}
+
+if (!customElements.get("tag-cloud-3d")) {
+    customElements.define("tag-cloud-3d", TagCloud3D);
+}
+</script>

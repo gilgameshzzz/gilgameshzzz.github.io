@@ -1,0 +1,206 @@
+---
+/**
+ * 轮播 Banner:交叉淡入淡出。
+ *
+ * 两类素材:
+ *  1. 静态图 —— src/assets/images/banners/*.{jpg,png,webp},构建期由 Astro 转 WebP 并生成多尺寸;
+ *  2. 动图/视频 —— public/banners/*.{mp4,webm,gif},原样输出(Astro 不处理视频,
+ *     GIF 若走优化管线会被压成静态帧,所以必须放 public/)。
+ *
+ * 两类素材按文件名混排进同一轮换队列。视频静音、循环、内联播放,只在轮到自己时播。
+ */
+import fs from "node:fs";
+import path from "node:path";
+import { Image } from "astro:assets";
+
+interface Props {
+	id?: string;
+	class?: string;
+	position?: string;
+	interval?: number;
+}
+
+const { id, position = "center", interval = 7000 } = Astro.props;
+const className = Astro.props.class;
+
+type Slide =
+	| { kind: "image"; key: string; data: ImageMetadata }
+	| { kind: "video"; key: string; src: string; type: string }
+	| { kind: "gif"; key: string; src: string };
+
+// 静态图:构建期收集并交给 Astro 优化
+const modules = import.meta.glob<{ default: ImageMetadata }>(
+	"../../assets/images/banners/*.{jpg,jpeg,png,webp,JPG,JPEG,PNG}",
+	{ eager: true },
+);
+
+const stills: Slide[] = Object.keys(modules).map((k) => ({
+	kind: "image" as const,
+	key: path.basename(k),
+	data: modules[k].default,
+}));
+
+// 动图/视频:读 public/banners/,原样引用
+const MOTION_DIR = path.join(process.cwd(), "public", "banners");
+const MIME: Record<string, string> = {
+	".mp4": "video/mp4",
+	".webm": "video/webm",
+};
+
+const motion: Slide[] = fs.existsSync(MOTION_DIR)
+	? fs
+			.readdirSync(MOTION_DIR)
+			.filter((f) => /\.(mp4|webm|gif)$/i.test(f))
+			.map((f) => {
+				const ext = path.extname(f).toLowerCase();
+				return ext === ".gif"
+					? { kind: "gif" as const, key: f, src: `/banners/${f}` }
+					: {
+							kind: "video" as const,
+							key: f,
+							src: `/banners/${f}`,
+							type: MIME[ext],
+						};
+			})
+	: [];
+
+const slides: Slide[] = [...stills, ...motion].sort((a, b) =>
+	a.key.localeCompare(b.key),
+);
+---
+
+<div
+    id={id}
+    class:list={[className, "overflow-hidden relative"]}
+    data-banner-carousel
+    data-interval={interval}
+>
+    <div class="transition absolute inset-0 dark:bg-black/10 bg-opacity-50 pointer-events-none z-10"></div>
+
+    {slides.map((s, i) => {
+        const style = `object-position: ${position}; opacity: ${i === 0 ? 1 : 0}; transition: opacity 1.6s ease-in-out;`;
+        const cls = "absolute inset-0 w-full h-full object-cover";
+
+        if (s.kind === "image") return (
+            <Image
+                src={s.data}
+                alt=""
+                widths={[480, 960, 1440, 1920]}
+                sizes="100vw"
+                loading={i === 0 ? "eager" : "lazy"}
+                data-banner-slide
+                class={cls}
+                style={style}
+            />
+        );
+
+        if (s.kind === "gif") return (
+            <img
+                src={s.src}
+                alt=""
+                loading={i === 0 ? "eager" : "lazy"}
+                data-banner-slide
+                class={cls}
+                style={style}
+            />
+        );
+
+        return (
+            <video
+                data-banner-slide
+                data-banner-video
+                muted
+                loop
+                playsinline
+                preload={i === 0 ? "auto" : "metadata"}
+                autoplay={i === 0 ? true : undefined}
+                class={cls}
+                style={style}
+            >
+                <source src={s.src} type={s.type} />
+            </video>
+        );
+    })}
+</div>
+
+<script>
+    function initBannerCarousel() {
+        document
+            .querySelectorAll<HTMLElement>("[data-banner-carousel]")
+            .forEach((root) => {
+                if (root.dataset.carouselReady === "1") return;
+                root.dataset.carouselReady = "1";
+
+                const slides = Array.from(
+                    root.querySelectorAll<HTMLElement>("[data-banner-slide]"),
+                );
+                if (slides.length === 0) return;
+
+                // 视频只在轮到自己时播放,省电也避免多路解码
+                const sync = (el: HTMLElement, active: boolean) => {
+                    if (!(el instanceof HTMLVideoElement)) return;
+                    if (active) {
+                        el.currentTime = 0;
+                        el.play().catch(() => {});
+                    } else {
+                        el.pause();
+                    }
+                };
+
+                let current = 0;
+                sync(slides[0], true);
+                if (slides.length < 2) return;
+
+                const interval = Number(root.dataset.interval) || 7000;
+                let timer: number | undefined;
+
+                const show = (next: number) => {
+                    slides[current].style.opacity = "0";
+                    slides[next].style.opacity = "1";
+                    sync(slides[current], false);
+                    sync(slides[next], true);
+                    current = next;
+                };
+
+                const start = () => {
+                    stop();
+                    timer = window.setInterval(() => {
+                        show((current + 1) % slides.length);
+                    }, interval);
+                };
+                const stop = () => {
+                    if (timer !== undefined) {
+                        clearInterval(timer);
+                        timer = undefined;
+                    }
+                };
+
+                // 尊重 prefers-reduced-motion:不自动切换,也不播视频
+                const reduced = window.matchMedia(
+                    "(prefers-reduced-motion: reduce)",
+                );
+                if (reduced.matches) {
+                    sync(slides[0], false);
+                    return;
+                }
+
+                // 标签页不可见时暂停,省电也避免回来时连跳几张
+                document.addEventListener("visibilitychange", () => {
+                    if (document.hidden) {
+                        stop();
+                        sync(slides[current], false);
+                    } else {
+                        sync(slides[current], true);
+                        start();
+                    }
+                });
+
+                start();
+            });
+    }
+
+    initBannerCarousel();
+    // swup 做页面切换后 DOM 会被替换,需要重新初始化
+    document.addEventListener("astro:after-swap", initBannerCarousel);
+    document.addEventListener("swup:contentReplaced", initBannerCarousel);
+</script>

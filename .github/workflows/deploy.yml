@@ -1,0 +1,61 @@
+name: Deploy Blog
+
+on:
+  push:
+    branches: [hexo, master, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: astro-site
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: astro-site/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Restore encrypted post passwords
+        if: ${{ secrets.POST_PASSWORDS != '' }}
+        env:
+          POST_PASSWORDS: ${{ secrets.POST_PASSWORDS }}
+        run: |
+          mkdir -p secrets
+          printf '%s' "$POST_PASSWORDS" > secrets/post-passwords.json
+
+      - run: pnpm build
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: astro-site/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

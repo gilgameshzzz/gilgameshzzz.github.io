@@ -1,0 +1,162 @@
+---
+import type { EncryptedPayload } from "../../utils/crypto-utils";
+
+interface Props {
+	payload: EncryptedPayload;
+	slug: string;
+}
+const { payload, slug } = Astro.props;
+---
+<encrypted-post
+    class="block"
+    data-salt={payload.salt}
+    data-iv={payload.iv}
+    data-payload={payload.data}
+    data-iterations={String(payload.iterations)}
+    data-slug={slug}
+>
+    <!-- 解锁表单 -->
+    <div class="lock-screen flex flex-col items-center justify-center py-14 px-6 text-center">
+        <div class="w-16 h-16 rounded-2xl bg-[var(--btn-regular-bg)] flex items-center justify-center mb-5">
+            <svg class="w-8 h-8 text-[var(--primary)]" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M12 1a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2h-1V6a5 5 0 0 0-5-5Zm3 8H9V6a3 3 0 1 1 6 0v3Zm-3 5a1.5 1.5 0 0 1 .75 2.8V19a.75.75 0 0 1-1.5 0v-2.2A1.5 1.5 0 0 1 12 14Z"/>
+            </svg>
+        </div>
+
+        <div class="text-xl font-bold text-90 mb-2">这是一篇加密文章</div>
+        <div class="text-sm text-50 mb-6 max-w-sm">
+            输入密码后即可阅读全文。正文在页面里是密文，不输入密码无法查看。
+        </div>
+
+        {payload.hint && (
+            <div class="text-sm text-50 mb-5 px-4 py-2 rounded-lg bg-[var(--btn-regular-bg)]">
+                提示：{payload.hint}
+            </div>
+        )}
+
+        <form class="unlock-form flex flex-col sm:flex-row gap-3 w-full max-w-md">
+            <label class="sr-only" for={`pwd-${slug}`}>密码</label>
+            <input
+                id={`pwd-${slug}`}
+                type="password"
+                class="pwd-input flex-1 h-11 px-4 rounded-xl bg-[var(--btn-regular-bg)] text-90
+                       outline-none border-2 border-transparent transition
+                       focus:border-[var(--primary)] placeholder:text-30"
+                placeholder="请输入密码"
+                autocomplete="off"
+                spellcheck="false"
+            />
+            <button
+                type="submit"
+                class="unlock-btn h-11 px-6 rounded-xl font-bold bg-[var(--primary)] text-[var(--card-bg)]
+                       transition active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed
+                       whitespace-nowrap"
+            >解锁</button>
+        </form>
+
+        <div class="err-msg text-sm text-red-500 mt-3 h-5" role="alert" aria-live="polite"></div>
+    </div>
+
+    <!-- 解密后的正文挂载点 -->
+    <div class="decrypted-content hidden"></div>
+</encrypted-post>
+
+<script>
+class EncryptedPost extends HTMLElement {
+    connectedCallback() {
+        const form = this.querySelector<HTMLFormElement>(".unlock-form");
+        const input = this.querySelector<HTMLInputElement>(".pwd-input");
+        const btn = this.querySelector<HTMLButtonElement>(".unlock-btn");
+        const err = this.querySelector<HTMLElement>(".err-msg");
+        const lock = this.querySelector<HTMLElement>(".lock-screen");
+        const out = this.querySelector<HTMLElement>(".decrypted-content");
+        if (!form || !input || !btn || !err || !lock || !out) return;
+
+        const slug = this.dataset.slug || "";
+        const storeKey = `post-pwd:${slug}`;
+
+        const b64 = (s: string) =>
+            Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+
+        const decrypt = async (password: string): Promise<string> => {
+            const enc = new TextEncoder();
+            const baseKey = await crypto.subtle.importKey(
+                "raw", enc.encode(password), "PBKDF2", false, ["deriveKey"],
+            );
+            const key = await crypto.subtle.deriveKey(
+                {
+                    name: "PBKDF2",
+                    salt: b64(this.dataset.salt || ""),
+                    iterations: Number(this.dataset.iterations || 310000),
+                    hash: "SHA-256",
+                },
+                baseKey,
+                { name: "AES-GCM", length: 256 },
+                false,
+                ["decrypt"],
+            );
+            // GCM 校验失败会直接 reject,不会产出乱码
+            const plain = await crypto.subtle.decrypt(
+                { name: "AES-GCM", iv: b64(this.dataset.iv || "") },
+                key,
+                b64(this.dataset.payload || ""),
+            );
+            return new TextDecoder().decode(plain);
+        };
+
+        const reveal = (html: string) => {
+            out.innerHTML = html;
+            out.classList.remove("hidden");
+            lock.classList.add("hidden");
+
+            // 解密出的内容是构建期自己生成的,不是用户输入,
+            // 但 innerHTML 不会执行其中的 <script>,代码块高亮等是纯 CSS,不受影响。
+            // 通知目录等组件重新扫描新出现的标题
+            document.dispatchEvent(new CustomEvent("post-decrypted"));
+        };
+
+        const submit = async (e: Event) => {
+            e.preventDefault();
+            const pwd = input.value;
+            if (!pwd) return;
+
+            btn.disabled = true;
+            btn.textContent = "解锁中…";
+            err.textContent = "";
+
+            try {
+                // PBKDF2 31 万轮在主线程上会卡一下,先让浏览器把 loading 态画出来
+                await new Promise((r) => setTimeout(r, 16));
+                const html = await decrypt(pwd);
+                // 本次会话内记住,刷新不用重输;关掉标签页即失效
+                try { sessionStorage.setItem(storeKey, pwd); } catch {}
+                reveal(html);
+            } catch {
+                err.textContent = "密码不正确";
+                input.value = "";
+                input.focus();
+                btn.disabled = false;
+                btn.textContent = "解锁";
+            }
+        };
+
+        form.addEventListener("submit", submit);
+
+        // 同一会话内已解锁过就直接还原
+        let saved: string | null = null;
+        try { saved = sessionStorage.getItem(storeKey); } catch {}
+        if (saved) {
+            decrypt(saved)
+                .then(reveal)
+                .catch(() => {
+                    // 密码已轮换,清掉旧的
+                    try { sessionStorage.removeItem(storeKey); } catch {}
+                });
+        }
+    }
+}
+
+if (!customElements.get("encrypted-post")) {
+    customElements.define("encrypted-post", EncryptedPost);
+}
+</script>

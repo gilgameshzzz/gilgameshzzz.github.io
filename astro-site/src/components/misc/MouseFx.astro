@@ -1,0 +1,196 @@
+---
+// 鼠标特效: 点击冒词 + 移动拖尾
+// 纯前端装饰,尊重 prefers-reduced-motion,触屏设备不启用
+---
+<script>
+const WORDS = [
+    "commit", "refactor", "ship it", "LGTM", "merge",
+    "404", "cache hit", "async", "null safe", "rollback",
+    "TODO", "fixed", "deploy", "green", "retry",
+];
+
+class MouseFx {
+    canvas: HTMLCanvasElement | null = null;
+    ctx: CanvasRenderingContext2D | null = null;
+    particles: {
+        x: number; y: number; vx: number; vy: number;
+        life: number; maxLife: number; size: number;
+    }[] = [];
+    raf = 0;
+    wordIdx = 0;
+    lastTrail = 0;
+    running = false;
+    accent = "0, 0, 0";
+
+    start() {
+        if (this.running) return;
+
+        // 触屏 / 无悬停能力的设备不做拖尾,也不做点击特效
+        if (!window.matchMedia("(hover: hover) and (pointer: fine)").matches) return;
+        if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+        this.running = true;
+
+        this.canvas = document.createElement("canvas");
+        this.canvas.id = "mouse-fx-canvas";
+        // 盖在最上层但完全不拦截交互
+        this.canvas.style.cssText =
+            "position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:9999";
+        document.body.appendChild(this.canvas);
+        this.ctx = this.canvas.getContext("2d");
+
+        this.resize();
+        this.readAccent();
+
+        window.addEventListener("resize", this.resize);
+        document.addEventListener("pointermove", this.onMove, { passive: true });
+        document.addEventListener("click", this.onClick);
+        document.addEventListener("visibilitychange", this.onVisibility);
+
+        this.raf = requestAnimationFrame(this.tick);
+    }
+
+    stop() {
+        if (!this.running) return;
+        this.running = false;
+        cancelAnimationFrame(this.raf);
+        window.removeEventListener("resize", this.resize);
+        document.removeEventListener("pointermove", this.onMove);
+        document.removeEventListener("click", this.onClick);
+        document.removeEventListener("visibilitychange", this.onVisibility);
+        this.canvas?.remove();
+        this.canvas = null;
+        this.ctx = null;
+        this.particles = [];
+    }
+
+    // 从主题变量里取当前主色,这样换主题色特效会跟着变
+    readAccent = () => {
+        const probe = document.createElement("div");
+        probe.style.cssText = "color:var(--primary);position:absolute;opacity:0";
+        document.body.appendChild(probe);
+        const c = getComputedStyle(probe).color;
+        probe.remove();
+        const m = c.match(/(\d+(?:\.\d+)?)/g);
+        if (m && m.length >= 3) {
+            this.accent = `${Math.round(+m[0])}, ${Math.round(+m[1])}, ${Math.round(+m[2])}`;
+        }
+    };
+
+    resize = () => {
+        if (!this.canvas || !this.ctx) return;
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        this.canvas.width = window.innerWidth * dpr;
+        this.canvas.height = window.innerHeight * dpr;
+        this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+
+    onVisibility = () => {
+        if (document.hidden) {
+            cancelAnimationFrame(this.raf);
+        } else if (this.running) {
+            this.raf = requestAnimationFrame(this.tick);
+        }
+    };
+
+    onMove = (e: PointerEvent) => {
+        const now = performance.now();
+        // 节流,否则高刷屏上粒子数量会失控
+        if (now - this.lastTrail < 26) return;
+        this.lastTrail = now;
+
+        this.particles.push({
+            x: e.clientX + (Math.random() - 0.5) * 6,
+            y: e.clientY + (Math.random() - 0.5) * 6,
+            vx: (Math.random() - 0.5) * 0.4,
+            vy: (Math.random() - 0.5) * 0.4 - 0.25,
+            life: 0,
+            maxLife: 420 + Math.random() * 260,
+            size: 1.2 + Math.random() * 1.8,
+        });
+
+        if (this.particles.length > 90) this.particles.splice(0, this.particles.length - 90);
+    };
+
+    onClick = (e: MouseEvent) => {
+        const word = WORDS[this.wordIdx % WORDS.length];
+        this.wordIdx++;
+
+        const el = document.createElement("span");
+        el.textContent = word;
+        el.setAttribute("aria-hidden", "true");
+        el.style.cssText =
+            `position:fixed;left:${e.clientX}px;top:${e.clientY}px;pointer-events:none;z-index:10000;` +
+            "font-size:13px;font-weight:700;white-space:nowrap;user-select:none;" +
+            `color:rgb(${this.accent});transform:translate(-50%,-50%);` +
+            "text-shadow:0 1px 3px rgba(0,0,0,.35);will-change:transform,opacity";
+        document.body.appendChild(el);
+
+        el.animate(
+            [
+                { transform: "translate(-50%, -50%) scale(.6)", opacity: 0 },
+                { transform: "translate(-50%, -120%) scale(1)", opacity: 1, offset: 0.25 },
+                { transform: "translate(-50%, -320%) scale(.92)", opacity: 0 },
+            ],
+            { duration: 1100, easing: "cubic-bezier(.22,.61,.36,1)" },
+        ).onfinish = () => el.remove();
+
+        // 点击处炸开一小圈粒子
+        for (let i = 0; i < 10; i++) {
+            const a = (Math.PI * 2 * i) / 10 + Math.random() * 0.4;
+            const sp = 1.1 + Math.random() * 1.6;
+            this.particles.push({
+                x: e.clientX,
+                y: e.clientY,
+                vx: Math.cos(a) * sp,
+                vy: Math.sin(a) * sp,
+                life: 0,
+                maxLife: 520 + Math.random() * 260,
+                size: 1.4 + Math.random() * 2,
+            });
+        }
+    };
+
+    tick = (t: number) => {
+        if (!this.ctx || !this.canvas) return;
+        const dt = 16;
+        this.ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+
+        for (let i = this.particles.length - 1; i >= 0; i--) {
+            const p = this.particles[i];
+            p.life += dt;
+            if (p.life >= p.maxLife) {
+                this.particles.splice(i, 1);
+                continue;
+            }
+            p.x += p.vx;
+            p.y += p.vy;
+            p.vy += 0.012;   // 轻微下坠
+            p.vx *= 0.985;   // 阻尼
+            p.vy *= 0.985;
+
+            const k = 1 - p.life / p.maxLife;
+            this.ctx.beginPath();
+            this.ctx.fillStyle = `rgba(${this.accent}, ${(k * 0.75).toFixed(3)})`;
+            this.ctx.arc(p.x, p.y, p.size * k, 0, Math.PI * 2);
+            this.ctx.fill();
+        }
+
+        this.raf = requestAnimationFrame(this.tick);
+    };
+}
+
+const fx = new MouseFx();
+
+const boot = () => fx.start();
+
+if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", boot, { once: true });
+} else {
+    boot();
+}
+
+// swup 换页后主色可能变了,重新取一次;canvas 挂在 body 上不会被替换掉
+document.addEventListener("astro:after-swap", () => fx.readAccent());
+document.addEventListener("swup:contentReplaced", () => fx.readAccent());
+</script>
