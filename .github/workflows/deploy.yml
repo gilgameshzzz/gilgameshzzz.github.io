@@ -21,6 +21,8 @@ defaults:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      POST_PASSWORDS: ${{ secrets.POST_PASSWORDS }}
     steps:
       - uses: actions/checkout@v4
 
@@ -37,9 +39,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Restore encrypted post passwords
-        if: ${{ secrets.POST_PASSWORDS != '' }}
-        env:
-          POST_PASSWORDS: ${{ secrets.POST_PASSWORDS }}
+        if: env.POST_PASSWORDS != ''
         run: |
           mkdir -p secrets
           printf '%s' "$POST_PASSWORDS" > secrets/post-passwords.json
