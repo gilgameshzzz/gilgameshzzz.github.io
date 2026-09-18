@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>抢票系统漏斗</title>
+<style>
+:root{
+  color-scheme: light;
+  --surface-1:#fcfcfb; --page:#f9f9f7;
+  --text-primary:#0b0b0b; --text-secondary:#52514e; --muted:#898781;
+  --grid:#e1e0d9; --axis:#c3c2b7; --ring:rgba(11,11,11,.10);
+  --track:#e1e0d9; --accent:#2a78d6;
+  --good:#0ca30c; --crit:#d03b3b; --warn:#fab219;
+  --s2:#eb6834;
+  /* 序数蓝阶：浅 → 深，通过 --ordinal 校验 */
+  --f1:#86b6ef; --f2:#5598e7; --f3:#2a78d6; --f4:#1c5cab; --f5:#104281;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme: dark;
+    --surface-1:#1a1a19; --page:#0d0d0d;
+    --text-primary:#fff; --text-secondary:#c3c2b7; --muted:#898781;
+    --grid:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,.10);
+    --track:#2c2c2a; --accent:#3987e5;
+    --good:#0ca30c; --crit:#d03b3b; --warn:#fab219;
+    --s2:#d95926;
+    --f1:#9ec5f4; --f2:#6da7ec; --f3:#3987e5; --f4:#256abf; --f5:#184f95;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --surface-1:#1a1a19; --page:#0d0d0d;
+  --text-primary:#fff; --text-secondary:#c3c2b7; --muted:#898781;
+  --grid:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,.10);
+  --track:#2c2c2a; --accent:#3987e5;
+  --good:#0ca30c; --crit:#d03b3b; --warn:#fab219;
+  --s2:#d95926;
+  --f1:#9ec5f4; --f2:#6da7ec; --f3:#3987e5; --f4:#256abf; --f5:#184f95;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{
+  background:var(--page); color:var(--text-primary);
+  font:14px/1.5 system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  display:flex; flex-direction:column; overflow:hidden;
+}
+header{
+  display:flex; align-items:center; gap:8px; padding:10px 16px;
+  border-bottom:1px solid var(--ring); flex:0 0 auto; flex-wrap:wrap;
+}
+.tabs{display:flex; gap:4px; flex-wrap:wrap}
+.tab{
+  appearance:none; border:0; cursor:pointer; font:inherit; font-weight:500;
+  padding:6px 12px; border-radius:999px; color:var(--text-secondary);
+  background:transparent; transition:background .15s,color .15s;
+}
+.tab:hover{background:var(--surface-1); color:var(--text-primary)}
+.tab[aria-selected="true"]{background:var(--accent); color:#fff}
+.spacer{flex:1 1 auto}
+.icon-btn{
+  appearance:none; cursor:pointer; font:inherit; padding:6px 10px;
+  border-radius:8px; border:1px solid var(--ring);
+  background:var(--surface-1); color:var(--text-secondary);
+}
+.icon-btn:hover{color:var(--text-primary)}
+main{flex:1 1 auto; position:relative; min-height:0}
+.panel{position:absolute; inset:0; padding:14px 16px; display:none; flex-direction:column; min-height:0; overflow:auto}
+.panel.active{display:flex}
+h2{margin:0 0 2px; font-size:15px; font-weight:600}
+p.sub{margin:0 0 10px; color:var(--text-secondary); font-size:12.5px}
+.stage{
+  flex:1 1 auto; min-height:190px; position:relative;
+  background:var(--surface-1); border:1px solid var(--ring); border-radius:12px; padding:14px;
+}
+.controls{display:flex; gap:20px; flex-wrap:wrap; margin:12px 0 0; align-items:center}
+.ctl{display:flex; flex-direction:column; gap:4px; min-width:200px; flex:1 1 200px}
+.ctl label{font-size:12px; color:var(--text-secondary); display:flex; justify-content:space-between; gap:8px}
+.ctl label b{color:var(--text-primary); font-variant-numeric:tabular-nums; font-weight:600}
+input[type=range]{
+  appearance:none; width:100%; height:4px; border-radius:2px;
+  background:var(--track); outline:none; cursor:pointer;
+}
+input[type=range]::-webkit-slider-thumb{
+  appearance:none; width:15px; height:15px; border-radius:50%;
+  background:var(--accent); border:2px solid var(--surface-1); box-shadow:0 0 0 1px var(--ring);
+}
+input[type=range]::-moz-range-thumb{
+  width:15px; height:15px; border-radius:50%; border:2px solid var(--surface-1); background:var(--accent);
+}
+.note{font-size:12px; color:var(--muted); margin-top:10px; line-height:1.6}
+.stats{display:flex; gap:24px; flex-wrap:wrap; margin:12px 0 0}
+.stat{min-width:118px}
+.stat .k{font-size:11.5px; color:var(--text-secondary)}
+.stat .v{font-size:25px; font-weight:600; line-height:1.15; margin-top:2px; font-variant-numeric:tabular-nums}
+.stat .n{font-size:11.5px; color:var(--muted)}
+
+/* ---- 漏斗 ---- */
+#funnel{display:flex; flex-direction:column; gap:9px; height:100%; justify-content:center}
+.frow{display:flex; align-items:center; gap:10px}
+.frow .nm{flex:0 0 138px; font-size:12.5px; color:var(--text-secondary); text-align:right}
+.frow .tr{flex:1 1 auto; height:26px; background:var(--track); border-radius:6px; overflow:hidden}
+.frow .tr i{
+  display:block; height:100%; border-radius:6px;
+  transition:width .55s cubic-bezier(.22,.8,.28,1), background .25s;
+}
+.frow .vl{
+  flex:0 0 112px; font-size:12.5px; font-variant-numeric:tabular-nums; font-weight:600;
+}
+.frow .vl s{text-decoration:none; color:var(--muted); font-weight:400; font-size:11.5px}
+
+/* ---- 竞态演示 ---- */
+.race{display:flex; gap:12px; height:100%; flex-wrap:wrap}
+.thread{
+  flex:1 1 210px; min-width:200px; border:1px solid var(--ring); border-radius:10px;
+  padding:10px; background:var(--page); display:flex; flex-direction:column; gap:6px;
+}
+.thread h4{margin:0; font-size:12.5px; font-weight:600; display:flex; align-items:center; gap:6px}
+.thread h4 i{width:8px; height:8px; border-radius:50%; background:var(--muted)}
+.thread.act h4 i{background:var(--warn)}
+.thread.ok h4 i{background:var(--good)}
+.thread.bad h4 i{background:var(--crit)}
+.op{
+  font:11.5px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  padding:4px 7px; border-radius:6px; background:var(--surface-1);
+  border:1px solid var(--ring); color:var(--text-secondary);
+  opacity:.32; transition:opacity .2s, border-color .2s, color .2s;
+}
+.op.on{opacity:1; border-color:var(--accent); color:var(--text-primary)}
+.op.err{opacity:1; border-color:var(--crit); color:var(--crit)}
+.verdict{
+  margin-top:auto; font-size:12px; font-weight:600; padding-top:6px;
+}
+.stockbox{
+  display:flex; align-items:center; gap:10px; margin-top:12px; padding:10px 14px;
+  border:1px solid var(--ring); border-radius:10px; background:var(--page); flex-wrap:wrap;
+}
+.stockbox .lb{font-size:12px; color:var(--text-secondary)}
+.stockbox .big{font-size:27px; font-weight:600; font-variant-numeric:tabular-nums; line-height:1}
+@media (prefers-reduced-motion: reduce){
+  .frow .tr i, .op{transition:none}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" aria-selected="true"  data-p="fun">流量漏斗</button>
+    <button class="tab" role="tab" aria-selected="false" data-p="race">超卖竞态</button>
+  </div>
+  <div class="spacer"></div>
+  <button class="icon-btn" id="theme">切换深浅色</button>
+</header>
+
+<main>
+
+<!-- ============ 漏斗 ============ -->
+<section class="panel active" data-p="fun">
+  <h2>十万并发，真正打到数据库的有多少</h2>
+  <p class="sub">每一层拦掉一个数量级。注意最后一层——落库写请求数由库存量决定，与并发量无关。</p>
+  <div class="stage"><div id="funnel"></div></div>
+  <div class="controls">
+    <div class="ctl">
+      <label>瞬时并发 <b id="qLab">100,000</b></label>
+      <input type="range" id="qps" min="1000" max="500000" step="1000" value="100000">
+    </div>
+    <div class="ctl">
+      <label>库存量 <b id="sLab">1,000</b></label>
+      <input type="range" id="stk" min="100" max="20000" step="100" value="1000">
+    </div>
+  </div>
+  <div class="stats">
+    <div class="stat"><div class="k">DB 写请求</div>
+      <div class="v" id="dbV">—</div><div class="n" id="dbN">—</div></div>
+    <div class="stat"><div class="k">整体拦截率</div>
+      <div class="v" id="filV">—</div><div class="n">未到达 DB 的比例</div></div>
+    <div class="stat"><div class="k">超卖数</div>
+      <div class="v" id="ovV" style="color:var(--good)">0</div><div class="n">由 DB 约束保证</div></div>
+  </div>
+  <div class="note">各层拦截比例为典型量级估算，非实测。核心结论与具体比例无关：<b>无论前面并发多大，最终落库的写请求数被库存量封顶</b>。前四层都只是削峰，「绝不超卖」这个保证由最后一层的数据库约束提供。</div>
+</section>
+
+<!-- ============ 竞态 ============ -->
+<section class="panel" data-p="race">
+  <h2>为什么「先查再扣」一定会超卖</h2>
+  <p class="sub">库存只剩 1，两个线程同时进来。点播放，看两种写法的差别。</p>
+  <div class="stage"><div class="race" id="race"></div></div>
+  <div class="stockbox">
+    <span class="lb">最终库存</span>
+    <span class="big" id="finalStock">1</span>
+    <span class="lb">售出</span>
+    <span class="big" id="sold">0</span>
+    <span class="spacer" style="flex:1"></span>
+    <button class="icon-btn" id="play">▶ 播放</button>
+  </div>
+  <div class="controls">
+    <div class="ctl">
+      <label>写法 <b id="mLab">check-then-act（有竞态）</b></label>
+      <input type="range" id="mode" min="0" max="1" step="1" value="0">
+    </div>
+  </div>
+  <div class="note" id="raceNote"></div>
+</section>
+
+</main>
+
+<script>
+/* ---------- 主题 ---------- */
+const root = document.documentElement;
+(function(){ const q = new URLSearchParams(location.search).get('theme');
+  if (q === 'dark' || q === 'light') root.setAttribute('data-theme', q); })();
+document.getElementById('theme').onclick = () => {
+  const cur = root.getAttribute('data-theme')
+    || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  root.setAttribute('data-theme', cur === 'dark' ? 'light' : 'dark');
+};
+addEventListener('message', e => {
+  if (e.data && e.data.type === 'theme' && (e.data.value === 'dark' || e.data.value === 'light'))
+    root.setAttribute('data-theme', e.data.value);
+});
+const css = n => getComputedStyle(root).getPropertyValue(n).trim();
+
+const tabs = [...document.querySelectorAll('.tab')], panels = [...document.querySelectorAll('.panel')];
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => x.setAttribute('aria-selected', String(x === t)));
+  panels.forEach(p => p.classList.toggle('active', p.dataset.p === t.dataset.p));
+});
+const fmt = n => n >= 1e4 ? (n/1e4).toFixed(n >= 1e6 ? 0 : 1) + '万' : Math.round(n).toLocaleString();
+
+/* ================= 漏斗 ================= */
+const LAYERS = [
+  { n:'瞬时并发',        c:'--f1', f:(q,s) => q },
+  { n:'网关限流 / 验证码', c:'--f2', f:(q,s) => q * 0.20 },
+  { n:'本地库存标记',     c:'--f3', f:(q,s) => Math.min(q * 0.20 * 0.25, s * 12) },
+  { n:'Redis Lua 预扣',   c:'--f4', f:(q,s) => Math.min(q * 0.05, s * 1.05) },
+  { n:'MQ → DB 落库',     c:'--f5', f:(q,s) => Math.min(q * 0.05, s) },
+];
+const funEl = document.getElementById('funnel');
+function layoutFunnel(){
+  const q = +document.getElementById('qps').value;
+  const s = +document.getElementById('stk').value;
+  document.getElementById('qLab').textContent = q.toLocaleString();
+  document.getElementById('sLab').textContent = s.toLocaleString();
+  const vals = LAYERS.map(L => Math.max(1, Math.round(L.f(q, s))));
+  funEl.innerHTML = LAYERS.map((L, i) => {
+    const v = vals[i], pct = v / vals[0] * 100;
+    const drop = i ? ' <s>↓' + Math.round((1 - v / vals[i-1]) * 100) + '%</s>' : '';
+    return '<div class="frow">'
+      + '<span class="nm">' + L.n + '</span>'
+      + '<span class="tr"><i style="width:' + Math.max(pct, 0.35) + '%;background:var(' + L.c + ')"></i></span>'
+      + '<span class="vl">' + fmt(v) + drop + '</span></div>';
+  }).join('');
+  const db = vals[4];
+  document.getElementById('dbV').textContent = fmt(db);
+  document.getElementById('dbN').textContent = db >= s ? '被库存量封顶' : '小于库存量';
+  document.getElementById('filV').textContent = (100 - db / q * 100).toFixed(2) + '%';
+}
+['qps','stk'].forEach(id => document.getElementById(id).oninput = layoutFunnel);
+layoutFunnel();
+
+/* ================= 竞态 ================= */
+const SCRIPTS = [
+  { // check-then-act
+    label:'check-then-act（有竞态）',
+    steps:[
+      { t:0, th:0, txt:'SELECT cnt → 1', ok:true },
+      { t:1, th:1, txt:'SELECT cnt → 1', ok:true },
+      { t:2, th:0, txt:'if (1 >= 1) 通过', ok:true },
+      { t:3, th:1, txt:'if (1 >= 1) 通过', ok:true },
+      { t:4, th:0, txt:'UPDATE cnt = 0', ok:true },
+      { t:5, th:1, txt:'UPDATE cnt = -1', ok:false },
+    ],
+    stock:-1, sold:2,
+    v:['✅ 下单成功','✅ 下单成功'], bad:[false,true],
+    note:'两个线程都读到 cnt=1，都通过了判断。读和写之间存在时间窗口 —— 这就是 check-then-act 竞态。库存被扣成 -1，超卖一张。并发越高，这个窗口被命中的概率越大。',
+  },
+  { // 原子条件更新
+    label:'原子条件更新（正确）',
+    steps:[
+      { t:0, th:0, txt:'UPDATE … WHERE cnt>=1', ok:true },
+      { t:1, th:1, txt:'UPDATE … WHERE cnt>=1', ok:true },
+      { t:2, th:0, txt:'affected = 1', ok:true },
+      { t:3, th:1, txt:'affected = 0', ok:false },
+      { t:4, th:0, txt:'COMMIT 下单', ok:true },
+      { t:5, th:1, txt:'ROLLBACK 售罄', ok:false },
+    ],
+    stock:0, sold:1,
+    v:['✅ 下单成功','⛔ 已售罄'], bad:[false,false],
+    note:'判断和扣减合并成一条语句，由数据库的行锁保证原子性。第二个线程的 UPDATE 影响行数为 0，直接判定失败。库存不可能为负 —— 这才是「绝不超卖」的保证所在。Redis 侧的等价物是用 Lua 脚本把判断与扣减放进同一次原子执行。',
+  },
+];
+const raceEl = document.getElementById('race');
+let timer = null;
+function renderRace(mi, upto){
+  const S = SCRIPTS[mi];
+  raceEl.innerHTML = [0,1].map(th => {
+    const mine = S.steps.filter(s => s.th === th);
+    const shown = mine.filter(s => s.t <= upto);
+    const doneAll = upto >= 5;
+    const cls = !doneAll ? (shown.length ? 'act' : '') : (S.bad[th] ? 'bad' : (S.v[th][0] === '✅' ? 'ok' : ''));
+    return '<div class="thread ' + cls + '"><h4><i></i>线程 ' + (th+1) + '</h4>'
+      + mine.map(s => '<div class="op ' + (s.t <= upto ? (s.ok ? 'on' : 'err') : '') + '">'
+          + s.txt + '</div>').join('')
+      + '<div class="verdict" style="color:' + (doneAll
+            ? (S.bad[th] ? css('--crit') : (S.v[th][0] === '✅' ? css('--good') : css('--text-secondary')))
+            : 'transparent') + '">'
+      + (doneAll ? S.v[th] + (S.bad[th] ? '（超卖！）' : '') : '·') + '</div></div>';
+  }).join('');
+  const done = upto >= 5;
+  const fs = document.getElementById('finalStock');
+  fs.textContent = done ? S.stock : 1;
+  fs.style.color = done && S.stock < 0 ? css('--crit') : css('--text-primary');
+  document.getElementById('sold').textContent = done ? S.sold : 0;
+}
+function playRace(){
+  clearInterval(timer);
+  const mi = +document.getElementById('mode').value;
+  let t = -1;
+  renderRace(mi, t);
+  timer = setInterval(() => {
+    if (++t > 5){ clearInterval(timer); return; }
+    renderRace(mi, t);
+  }, 620);
+}
+function syncMode(){
+  const mi = +document.getElementById('mode').value;
+  document.getElementById('mLab').textContent = SCRIPTS[mi].label;
+  document.getElementById('raceNote').textContent = SCRIPTS[mi].note;
+  renderRace(mi, 5);
+}
+document.getElementById('mode').oninput = () => { clearInterval(timer); syncMode(); };
+document.getElementById('play').onclick = playRace;
+syncMode();
+</script>
+</body>
+</html>
