@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>网页能力演示</title>
+<style>
+:root{
+  color-scheme: light;
+  --surface-1:#fcfcfb; --page:#f9f9f7;
+  --text-primary:#0b0b0b; --text-secondary:#52514e; --muted:#898781;
+  --grid:#e1e0d9; --axis:#c3c2b7; --ring:rgba(11,11,11,.10);
+  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a;
+  --accent:#2a78d6;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme: dark;
+    --surface-1:#1a1a19; --page:#0d0d0d;
+    --text-primary:#fff; --text-secondary:#c3c2b7; --muted:#898781;
+    --grid:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,.10);
+    --s1:#3987e5; --s2:#d95926; --s3:#199e70;
+    --accent:#3987e5;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --surface-1:#1a1a19; --page:#0d0d0d;
+  --text-primary:#fff; --text-secondary:#c3c2b7; --muted:#898781;
+  --grid:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,.10);
+  --s1:#3987e5; --s2:#d95926; --s3:#199e70;
+  --accent:#3987e5;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{
+  background:var(--page); color:var(--text-primary);
+  font:14px/1.5 system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  display:flex; flex-direction:column; overflow:hidden;
+}
+header{
+  display:flex; align-items:center; gap:8px; padding:10px 16px;
+  border-bottom:1px solid var(--ring); flex:0 0 auto; flex-wrap:wrap;
+}
+.tabs{display:flex; gap:4px; flex-wrap:wrap}
+.tab{
+  appearance:none; border:0; cursor:pointer; font:inherit; font-weight:500;
+  padding:6px 12px; border-radius:999px; color:var(--text-secondary);
+  background:transparent; transition:background .15s,color .15s;
+}
+.tab:hover{background:var(--surface-1); color:var(--text-primary)}
+.tab[aria-selected="true"]{background:var(--accent); color:#fff}
+.spacer{flex:1 1 auto}
+.icon-btn{
+  appearance:none; cursor:pointer; font:inherit; padding:6px 10px;
+  border-radius:8px; border:1px solid var(--ring);
+  background:var(--surface-1); color:var(--text-secondary);
+}
+.icon-btn:hover{color:var(--text-primary)}
+main{flex:1 1 auto; position:relative; min-height:0}
+.panel{
+  position:absolute; inset:0; padding:16px;
+  display:none; flex-direction:column; min-height:0;
+}
+.panel.active{display:flex}
+.panel h2{margin:0 0 2px; font-size:15px; font-weight:600}
+.panel p.sub{margin:0 0 12px; color:var(--text-secondary); font-size:12.5px}
+.stage{
+  flex:1 1 auto; min-height:0; position:relative;
+  background:var(--surface-1); border:1px solid var(--ring); border-radius:12px;
+  overflow:hidden;
+}
+.stage canvas{display:block; width:100%; height:100%; touch-action:none}
+svg{display:block; width:100%; height:100%}
+.legend{display:flex; gap:16px; flex-wrap:wrap; margin:10px 0 0; font-size:12.5px; color:var(--text-secondary)}
+.legend span{display:inline-flex; align-items:center; gap:6px}
+.legend i{width:10px; height:10px; border-radius:3px; display:inline-block}
+.hint{
+  position:absolute; left:12px; bottom:10px; font-size:12px; color:var(--muted);
+  pointer-events:none; user-select:none;
+}
+.ctrls{
+  position:absolute; right:12px; top:12px; display:flex; gap:6px; flex-direction:column; align-items:flex-end;
+}
+.ctrls button{
+  appearance:none; cursor:pointer; font:12px/1 inherit; padding:6px 10px;
+  border-radius:8px; border:1px solid var(--ring); background:var(--surface-1);
+  color:var(--text-secondary);
+}
+.ctrls button:hover{color:var(--text-primary)}
+#tip{
+  position:absolute; pointer-events:none; opacity:0; transition:opacity .12s;
+  background:var(--surface-1); border:1px solid var(--ring); border-radius:8px;
+  padding:8px 10px; font-size:12px; box-shadow:0 4px 16px rgba(0,0,0,.12);
+  white-space:nowrap; z-index:5;
+}
+#tip b{display:block; margin-bottom:4px; font-size:12px; color:var(--text-secondary); font-weight:500}
+#tip .row{display:flex; align-items:center; gap:6px; line-height:1.7}
+#tip .row i{width:8px; height:8px; border-radius:2px}
+#tip .row em{font-style:normal; color:var(--text-secondary); min-width:46px}
+#tip .row s{text-decoration:none; font-variant-numeric:tabular-nums; margin-left:auto; font-weight:600}
+.axis-text{fill:var(--muted); font-size:11px; font-family:inherit}
+.dlabel{font-size:11.5px; font-weight:600; font-family:inherit}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" aria-selected="true"  data-p="chart">数据可视化</button>
+    <button class="tab" role="tab" aria-selected="false" data-p="three">3D</button>
+    <button class="tab" role="tab" aria-selected="false" data-p="anim">动画</button>
+    <button class="tab" role="tab" aria-selected="false" data-p="inter">交互演示</button>
+  </div>
+  <div class="spacer"></div>
+  <button class="icon-btn" id="theme">切换深浅色</button>
+</header>
+
+<main>
+  <!-- ========== 1. 数据可视化 ========== -->
+  <section class="panel active" data-p="chart">
+    <h2>月度文章阅读量</h2>
+    <p class="sub">SVG 折线图 · 移动鼠标查看十字准线与数值</p>
+    <div class="stage" id="chartStage">
+      <svg id="chart" viewBox="0 0 800 340" preserveAspectRatio="none"></svg>
+      <div id="tip"></div>
+    </div>
+    <div class="legend">
+      <span><i style="background:var(--s1)"></i>后端</span>
+      <span><i style="background:var(--s2)"></i>算法</span>
+      <span><i style="background:var(--s3)"></i>AI</span>
+    </div>
+  </section>
+
+  <!-- ========== 2. 3D ========== -->
+  <section class="panel" data-p="three">
+    <h2>实时 3D 渲染</h2>
+    <p class="sub">纯 Canvas 2D 手写管线：参数化圆环面 · 画家算法排序 · Lambert 漫反射</p>
+    <div class="stage">
+      <canvas id="c3d"></canvas>
+      <div class="ctrls">
+        <button id="wire">线框：关</button>
+        <button id="spin">自转：开</button>
+      </div>
+      <div class="hint">拖动旋转 · 滚轮缩放</div>
+    </div>
+  </section>
+
+  <!-- ========== 3. 动画 ========== -->
+  <section class="panel" data-p="anim">
+    <h2>流场粒子</h2>
+    <p class="sub">2000 个粒子沿柏林噪声流场运动，拖尾由半透明清屏叠加产生</p>
+    <div class="stage">
+      <canvas id="canim"></canvas>
+      <div class="ctrls"><button id="reseed">重新播种</button></div>
+      <div class="hint">移动鼠标扰动流场</div>
+    </div>
+  </section>
+
+  <!-- ========== 4. 交互 ========== -->
+  <section class="panel" data-p="inter">
+    <h2>力导向图</h2>
+    <p class="sub">弹簧-斥力模型实时迭代，节点可拖拽</p>
+    <div class="stage">
+      <canvas id="cnet"></canvas>
+      <div class="ctrls"><button id="shake">打散重排</button></div>
+      <div class="hint">拖动节点 · 悬停高亮邻居</div>
+    </div>
+  </section>
+</main>
+
+<script>
+/* ============ 主题 ============ */
+const root = document.documentElement;
+(function(){
+  const q = new URLSearchParams(location.search).get('theme');
+  if (q === 'dark' || q === 'light') root.setAttribute('data-theme', q);
+})();
+document.getElementById('theme').onclick = () => {
+  const cur = root.getAttribute('data-theme')
+    || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  root.setAttribute('data-theme', cur === 'dark' ? 'light' : 'dark');
+  redrawAll();
+};
+// 允许父页面 postMessage({type:'theme', value:'dark'}) 同步主题
+addEventListener('message', e => {
+  if (e.data && e.data.type === 'theme' && (e.data.value === 'dark' || e.data.value === 'light')) {
+    root.setAttribute('data-theme', e.data.value); redrawAll();
+  }
+});
+const css = n => getComputedStyle(root).getPropertyValue(n).trim();
+
+/* ============ 标签页：只让当前面板跑 rAF ============ */
+let active = 'chart';
+const panels = [...document.querySelectorAll('.panel')];
+const tabs   = [...document.querySelectorAll('.tab')];
+tabs.forEach(t => t.onclick = () => {
+  active = t.dataset.p;
+  tabs.forEach(x => x.setAttribute('aria-selected', String(x === t)));
+  panels.forEach(p => p.classList.toggle('active', p.dataset.p === active));
+  resizeAll(); redrawAll();
+});
+
+/* ============ canvas 尺寸（含 HiDPI） ============ */
+function fit(cv){
+  const r = cv.getBoundingClientRect();
+  const d = Math.min(devicePixelRatio || 1, 2);
+  if (!r.width || !r.height) return null;
+  cv.width = Math.round(r.width * d);
+  cv.height = Math.round(r.height * d);
+  const ctx = cv.getContext('2d');
+  ctx.setTransform(d, 0, 0, d, 0, 0);
+  return { ctx, w: r.width, h: r.height };
+}
+
+/* ==================================================================
+   1. 数据可视化 —— SVG 折线 + 十字准线 tooltip
+   ================================================================== */
+const MONTHS = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+const SERIES = [
+  { name:'后端', v:'--s1', data:[420,455,510,486,540,612,660,705,690,742,810,865] },
+  { name:'算法', v:'--s2', data:[310,340,322,395,430,412,468,505,540,522,575,620] },
+  { name:'AI',   v:'--s3', data:[ 90,130,185,240,330,405,520,610,700,815,930,1040] },
+];
+const PAD = { t:18, r:58, b:28, l:46 }, VW = 800, VH = 340;
+const svg  = document.getElementById('chart');
+const tip  = document.getElementById('tip');
+const stage= document.getElementById('chartStage');
+const maxY = 1100;
+const X = i => PAD.l + i * (VW - PAD.l - PAD.r) / (MONTHS.length - 1);
+const Y = v => VH - PAD.b - (v / maxY) * (VH - PAD.t - PAD.b);
+const el = (n, a) => { const e = document.createElementNS('http://www.w3.org/2000/svg', n);
+  for (const k in a) e.setAttribute(k, a[k]); return e; };
+
+function drawChart(){
+  svg.textContent = '';
+  // 网格 + y 轴刻度（recessive）
+  for (let v = 0; v <= maxY; v += 250){
+    svg.appendChild(el('line', { x1:PAD.l, x2:VW-PAD.r, y1:Y(v), y2:Y(v),
+      stroke: v === 0 ? css('--axis') : css('--grid'), 'stroke-width':1 }));
+    const t = el('text', { x:PAD.l-8, y:Y(v)+4, 'text-anchor':'end', class:'axis-text' });
+    t.textContent = v; svg.appendChild(t);
+  }
+  // x 轴标签（隔一个显示，避免拥挤）
+  MONTHS.forEach((m, i) => { if (i % 2) return;
+    const t = el('text', { x:X(i), y:VH-PAD.b+18, 'text-anchor':'middle', class:'axis-text' });
+    t.textContent = m; svg.appendChild(t);
+  });
+  // 折线：2px
+  SERIES.forEach(s => {
+    svg.appendChild(el('path', {
+      d: s.data.map((v,i) => (i?'L':'M') + X(i) + ' ' + Y(v)).join(' '),
+      fill:'none', stroke:css(s.v), 'stroke-width':2,
+      'stroke-linecap':'round', 'stroke-linejoin':'round' }));
+    // 直接标注末端（浅色模式 aqua 对比度 < 3:1，靠标签兜底识别）
+    const last = s.data.length - 1;
+    const t = el('text', { x:X(last)+8, y:Y(s.data[last])+4, class:'dlabel', fill:css(s.v) });
+    t.textContent = s.name; svg.appendChild(t);
+  });
+  // 交互层
+  cross = el('line', { y1:PAD.t, y2:VH-PAD.b, stroke:css('--axis'), 'stroke-width':1, opacity:0 });
+  svg.appendChild(cross);
+  dots = SERIES.map(s => { const c = el('circle', { r:4.5, fill:css(s.v),
+    stroke:css('--surface-1'), 'stroke-width':2, opacity:0 }); svg.appendChild(c); return c; });
+  svg.appendChild(el('rect', { x:0, y:0, width:VW, height:VH, fill:'transparent', id:'hit' }));
+}
+let cross, dots;
+
+stage.addEventListener('pointermove', e => {
+  const r = svg.getBoundingClientRect();
+  const vx = (e.clientX - r.left) / r.width * VW;
+  let i = Math.round((vx - PAD.l) / ((VW-PAD.l-PAD.r)/(MONTHS.length-1)));
+  i = Math.max(0, Math.min(MONTHS.length-1, i));
+  cross.setAttribute('x1', X(i)); cross.setAttribute('x2', X(i)); cross.setAttribute('opacity', 1);
+  dots.forEach((d, k) => { d.setAttribute('cx', X(i)); d.setAttribute('cy', Y(SERIES[k].data[i]));
+    d.setAttribute('stroke', css('--surface-1')); d.setAttribute('opacity', 1); });
+  tip.innerHTML = '<b>' + MONTHS[i] + '</b>' + SERIES.map(s =>
+    '<div class="row"><i style="background:' + css(s.v) + '"></i><em>' + s.name +
+    '</em><s>' + s.data[i].toLocaleString() + '</s></div>').join('');
+  tip.style.opacity = 1;
+  const px = (e.clientX - r.left), sw = stage.clientWidth;
+  tip.style.left = Math.min(px + 14, sw - tip.offsetWidth - 8) + 'px';
+  tip.style.top  = Math.max(8, e.clientY - stage.getBoundingClientRect().top - 10) + 'px';
+});
+stage.addEventListener('pointerleave', () => {
+  tip.style.opacity = 0; cross.setAttribute('opacity', 0);
+  dots.forEach(d => d.setAttribute('opacity', 0));
+});
+
+/* ==================================================================
+   2. 3D —— 手写渲染管线
+   ================================================================== */
+const c3d = document.getElementById('c3d');
+let rx = -0.5, ry = 0.4, zoom = 1, spin = true, wire = false, g3 = null;
+const QUADS = (() => {
+  const R = 1.0, r = 0.42, N = 44, M = 22, out = [];
+  const P = (i, j) => { const u = i/N*Math.PI*2, v = j/M*Math.PI*2;
+    return [ (R + r*Math.cos(v)) * Math.cos(u), (R + r*Math.cos(v)) * Math.sin(u), r*Math.sin(v) ]; };
+  for (let i = 0; i < N; i++) for (let j = 0; j < M; j++)
+    out.push([ P(i,j), P(i+1,j), P(i+1,j+1), P(i,j+1) ]);
+  return out;
+})();
+
+function draw3d(){
+  if (!g3) return;
+  const { ctx, w, h } = g3;
+  ctx.clearRect(0, 0, w, h);
+  const cx = w/2, cy = h/2, f = Math.min(w, h) * 0.42 * zoom;
+  const ca = Math.cos(rx), sa = Math.sin(rx), cb = Math.cos(ry), sb = Math.sin(ry);
+  const rot = p => {                       // 绕 Y 再绕 X
+    let [x, y, z] = p;
+    let x1 =  x*cb + z*sb, z1 = -x*sb + z*cb;
+    let y1 =  y*ca - z1*sa, z2 = y*sa + z1*ca;
+    return [x1, y1, z2];
+  };
+  const L = [0.45, -0.75, 0.5], Ln = Math.hypot(...L);
+  const base = hex2rgb(css('--s1'));
+  const faces = QUADS.map(q => {
+    const v = q.map(rot);
+    const d = (v[0][2] + v[1][2] + v[2][2] + v[3][2]) / 4;
+    const n = normal(v);
+    const lam = Math.max(0, (n[0]*L[0] + n[1]*L[1] + n[2]*L[2]) / Ln);
+    return { v, d, s: 0.18 + 0.82 * Math.pow(lam, 0.8) };
+  }).sort((a, b) => a.d - b.d);           // 画家算法：远的先画
+  const proj = p => [ cx + p[0]/(3.6 - p[2]) * f * 2.2, cy + p[1]/(3.6 - p[2]) * f * 2.2 ];
+  ctx.lineJoin = 'round';
+  for (const F of faces){
+    const p = F.v.map(proj);
+    ctx.beginPath(); ctx.moveTo(p[0][0], p[0][1]);
+    for (let k = 1; k < 4; k++) ctx.lineTo(p[k][0], p[k][1]);
+    ctx.closePath();
+    ctx.fillStyle = 'rgb(' + base.map(c => Math.round(c * F.s)).join(',') + ')';
+    ctx.fill();
+    if (wire){ ctx.strokeStyle = css('--s2'); ctx.lineWidth = 0.6; ctx.stroke(); }
+    else { ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = 0.5; ctx.stroke(); } // 消除接缝
+  }
+}
+function normal(v){
+  const a = [v[1][0]-v[0][0], v[1][1]-v[0][1], v[1][2]-v[0][2]];
+  const b = [v[3][0]-v[0][0], v[3][1]-v[0][1], v[3][2]-v[0][2]];
+  const n = [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
+  const L = Math.hypot(...n) || 1;
+  return [n[0]/L, n[1]/L, n[2]/L];
+}
+function hex2rgb(h){
+  h = h.replace('#','');
+  if (h.length === 3) h = [...h].map(c => c + c).join('');
+  const n = parseInt(h, 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+(function bind3d(){
+  let down = false, lx = 0, ly = 0;
+  c3d.addEventListener('pointerdown', e => { down = true; lx = e.clientX; ly = e.clientY;
+    c3d.setPointerCapture(e.pointerId); });
+  c3d.addEventListener('pointermove', e => { if (!down) return;
+    ry += (e.clientX - lx) * 0.01; rx += (e.clientY - ly) * 0.01;
+    lx = e.clientX; ly = e.clientY; });
+  addEventListener('pointerup', () => down = false);
+  c3d.addEventListener('wheel', e => { e.preventDefault();
+    zoom = Math.max(0.5, Math.min(2.2, zoom * (e.deltaY > 0 ? 0.92 : 1.08))); }, { passive:false });
+  document.getElementById('spin').onclick = e => { spin = !spin; e.target.textContent = '自转：' + (spin ? '开' : '关'); };
+  document.getElementById('wire').onclick = e => { wire = !wire; e.target.textContent = '线框：' + (wire ? '开' : '关'); };
+})();
+
+/* ==================================================================
+   3. 动画 —— 流场粒子
+   ================================================================== */
+const canim = document.getElementById('canim');
+let gA = null, parts = [], mouse = { x:-999, y:-999 };
+const perm = (() => { const p = [...Array(256).keys()];
+  for (let i = 255; i > 0; i--){ const j = (Math.random() * (i+1)) | 0; [p[i], p[j]] = [p[j], p[i]]; }
+  return [...p, ...p]; })();
+const fade = t => t*t*t*(t*(t*6-15)+10);
+function noise2(x, y){                      // 经典 Perlin 2D
+  const xi = Math.floor(x) & 255, yi = Math.floor(y) & 255;
+  const xf = x - Math.floor(x), yf = y - Math.floor(y);
+  const u = fade(xf), v = fade(yf);
+  const grad = (h, x, y) => ((h & 1) ? -x : x) + ((h & 2) ? -y : y);
+  const aa = perm[perm[xi] + yi], ab = perm[perm[xi] + yi + 1];
+  const ba = perm[perm[xi+1] + yi], bb = perm[perm[xi+1] + yi + 1];
+  const lerp = (a, b, t) => a + t * (b - a);
+  return lerp(lerp(grad(aa, xf, yf), grad(ba, xf-1, yf), u),
+              lerp(grad(ab, xf, yf-1), grad(bb, xf-1, yf-1), u), v);
+}
+function seed(){
+  if (!gA) return;
+  const { w, h } = gA;
+  parts = Array.from({ length: 2000 }, () => ({
+    x: Math.random()*w, y: Math.random()*h, life: Math.random()*180|0,
+    c: Math.random() < .5 ? '--s1' : (Math.random() < .5 ? '--s2' : '--s3')
+  }));
+  gA.ctx.fillStyle = css('--surface-1');
+  gA.ctx.fillRect(0, 0, w, h);
+}
+let tAnim = 0;
+function stepAnim(){
+  if (!gA) return;
+  const { ctx, w, h } = gA;
+  tAnim += 0.0016;
+  ctx.globalAlpha = 0.07; ctx.fillStyle = css('--surface-1'); ctx.fillRect(0, 0, w, h);
+  ctx.globalAlpha = 0.75; ctx.lineWidth = 1.1; ctx.lineCap = 'round';
+  for (const p of parts){
+    const a = noise2(p.x * 0.0022, p.y * 0.0022 + tAnim) * Math.PI * 2.4;
+    let vx = Math.cos(a) * 1.5, vy = Math.sin(a) * 1.5;
+    const dx = p.x - mouse.x, dy = p.y - mouse.y, d2 = dx*dx + dy*dy;
+    if (d2 < 16000){ const f = 42 / (Math.sqrt(d2) + 8); vx += dx * f * 0.05; vy += dy * f * 0.05; }
+    ctx.strokeStyle = css(p.c);
+    ctx.beginPath(); ctx.moveTo(p.x, p.y);
+    p.x += vx; p.y += vy;
+    ctx.lineTo(p.x, p.y); ctx.stroke();
+    if (++p.life > 220 || p.x < 0 || p.x > w || p.y < 0 || p.y > h){
+      p.x = Math.random()*w; p.y = Math.random()*h; p.life = 0;
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+canim.addEventListener('pointermove', e => {
+  const r = canim.getBoundingClientRect(); mouse.x = e.clientX - r.left; mouse.y = e.clientY - r.top;
+});
+canim.addEventListener('pointerleave', () => { mouse.x = mouse.y = -999; });
+document.getElementById('reseed').onclick = seed;
+
+/* ==================================================================
+   4. 交互 —— 力导向图
+   ================================================================== */
+const cnet = document.getElementById('cnet');
+let gN = null, nodes = [], links = [], drag = null, hover = null;
+const LABELS = ['Astro','Vite','Svelte','Tailwind','Markdown','Pagefind','Sitemap','RSS',
+                'KaTeX','Swup','Sharp','GitHub Pages'];
+const EDGES = [[0,1],[0,2],[0,3],[0,4],[0,5],[0,6],[0,7],[1,2],[1,10],[4,8],[4,9],[0,11],[5,11],[3,2],[6,11]];
+function buildNet(){
+  if (!gN) return;
+  const { w, h } = gN;
+  nodes = LABELS.map((t, i) => ({
+    t, x: w/2 + Math.cos(i/LABELS.length*6.28)*Math.min(w,h)*0.28 + (Math.random()-0.5)*20,
+    y: h/2 + Math.sin(i/LABELS.length*6.28)*Math.min(w,h)*0.28 + (Math.random()-0.5)*20,
+    vx:0, vy:0, deg:0, c: i === 0 ? '--s2' : '--s1'
+  }));
+  links = EDGES.map(([a, b]) => { nodes[a].deg++; nodes[b].deg++; return { a, b }; });
+}
+function stepNet(){
+  if (!gN) return;
+  const { ctx, w, h } = gN;
+  // 物理：库仑斥力 + 胡克引力 + 向心力
+  for (let i = 0; i < nodes.length; i++) for (let j = i+1; j < nodes.length; j++){
+    const a = nodes[i], b = nodes[j];
+    let dx = b.x-a.x, dy = b.y-a.y, d = Math.hypot(dx, dy) || 0.01;
+    const f = 5200 / (d*d);
+    dx /= d; dy /= d;
+    a.vx -= dx*f; a.vy -= dy*f; b.vx += dx*f; b.vy += dy*f;
+  }
+  for (const L of links){
+    const a = nodes[L.a], b = nodes[L.b];
+    let dx = b.x-a.x, dy = b.y-a.y, d = Math.hypot(dx, dy) || 0.01;
+    const f = (d - 110) * 0.012;
+    dx /= d; dy /= d;
+    a.vx += dx*f; a.vy += dy*f; b.vx -= dx*f; b.vy -= dy*f;
+  }
+  for (const n of nodes){
+    n.vx += (w/2 - n.x) * 0.0016; n.vy += (h/2 - n.y) * 0.0016;
+    n.vx *= 0.86; n.vy *= 0.86;
+    if (n !== drag){ n.x += n.vx; n.y += n.vy; }
+    const r = 10 + n.deg;
+    n.x = Math.max(r+30, Math.min(w-r-30, n.x));
+    n.y = Math.max(r+14, Math.min(h-r-14, n.y));
+  }
+  // 绘制
+  ctx.clearRect(0, 0, w, h);
+  const nb = hover == null ? null : new Set(links.flatMap(L =>
+    L.a === hover ? [L.b] : L.b === hover ? [L.a] : []));
+  ctx.lineWidth = 1.5;
+  for (const L of links){
+    const on = hover != null && (L.a === hover || L.b === hover);
+    ctx.strokeStyle = on ? css('--s2') : css('--grid');
+    ctx.globalAlpha = hover == null ? 1 : (on ? 1 : .35);
+    ctx.beginPath(); ctx.moveTo(nodes[L.a].x, nodes[L.a].y);
+    ctx.lineTo(nodes[L.b].x, nodes[L.b].y); ctx.stroke();
+  }
+  ctx.font = '600 12px system-ui,-apple-system,"PingFang SC",sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  nodes.forEach((n, i) => {
+    const lit = hover == null || i === hover || (nb && nb.has(i));
+    ctx.globalAlpha = lit ? 1 : .3;
+    const r = 8 + n.deg * 1.4;
+    ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, 6.2832);
+    ctx.fillStyle = css(i === hover ? '--s2' : n.c); ctx.fill();
+    ctx.lineWidth = 2; ctx.strokeStyle = css('--surface-1'); ctx.stroke();  // 2px 表面环
+    ctx.fillStyle = css('--text-primary');
+    ctx.fillText(n.t, n.x, n.y + r + 11);
+  });
+  ctx.globalAlpha = 1;
+}
+function pick(e){
+  const r = cnet.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+  let best = null, bd = 1e9;
+  nodes.forEach((n, i) => { const d = Math.hypot(n.x-x, n.y-y);
+    if (d < 8 + n.deg*1.4 + 8 && d < bd){ bd = d; best = i; } });   // 命中区域大于标记本身
+  return { i: best, x, y };
+}
+cnet.addEventListener('pointerdown', e => { const p = pick(e);
+  if (p.i != null){ drag = nodes[p.i]; cnet.setPointerCapture(e.pointerId); } });
+cnet.addEventListener('pointermove', e => {
+  const p = pick(e);
+  if (drag){ drag.x = p.x; drag.y = p.y; drag.vx = drag.vy = 0; }
+  else { hover = p.i; cnet.style.cursor = p.i != null ? 'grab' : 'default'; }
+});
+addEventListener('pointerup', () => drag = null);
+cnet.addEventListener('pointerleave', () => { hover = null; });
+document.getElementById('shake').onclick = () => {
+  for (const n of nodes){ n.vx += (Math.random()-.5)*60; n.vy += (Math.random()-.5)*60; }
+};
+
+/* ==================================================================
+   驱动
+   ================================================================== */
+function resizeAll(){
+  if (active === 'three') g3 = fit(c3d);
+  if (active === 'anim'){ const prev = gA; gA = fit(canim); if (!prev || !parts.length) seed(); else seed(); }
+  if (active === 'inter'){ const prev = gN; gN = fit(cnet); if (!prev || !nodes.length) buildNet(); }
+}
+function redrawAll(){ drawChart(); draw3d(); }
+addEventListener('resize', () => { resizeAll(); redrawAll(); });
+
+function loop(){
+  if (active === 'three'){ if (spin) ry += 0.006; draw3d(); }
+  else if (active === 'anim') stepAnim();
+  else if (active === 'inter') stepNet();
+  requestAnimationFrame(loop);
+}
+drawChart(); resizeAll(); loop();
+</script>
+</body>
+</html>
