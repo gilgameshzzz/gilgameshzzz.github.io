@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>标定失败归因 Agent 架构</title>
+<style>
+:root{
+  color-scheme: light;
+  --page:#f9f9f7; --surface-1:#fcfcfb;
+  --text-primary:#0b0b0b; --text-secondary:#52514e; --muted:#898781;
+  --ring:rgba(11,11,11,.10); --grid:#e1e0d9;
+  --entry:#3987e5; --gateway:#c98500; --orch:#1baf7a;
+  --ds:#d95926; --llm:#6b3fb0; --im:#0ca30c;
+  --accent:#2a78d6; --track:#e1e0d9;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme: dark;
+    --page:#0d0d0d; --surface-1:#1a1a19;
+    --text-primary:#fff; --text-secondary:#c3c2b7; --muted:#898781;
+    --ring:rgba(255,255,255,.10); --grid:#2c2c2a;
+    --entry:#3987e5; --gateway:#c98500; --orch:#199e70;
+    --ds:#d95926; --llm:#9b6fd6; --im:#0ca30c;
+    --accent:#3987e5; --track:#2c2c2a;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --page:#0d0d0d; --surface-1:#1a1a19;
+  --text-primary:#fff; --text-secondary:#c3c2b7; --muted:#898781;
+  --ring:rgba(255,255,255,.10); --grid:#2c2c2a;
+  --entry:#3987e5; --gateway:#c98500; --orch:#199e70;
+  --ds:#d95926; --llm:#9b6fd6; --im:#0ca30c;
+  --accent:#3987e5; --track:#2c2c2a;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{
+  background:var(--page); color:var(--text-primary);
+  font:14px/1.5 system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  display:flex; flex-direction:column; overflow:hidden;
+}
+header{
+  display:flex; align-items:center; gap:12px; padding:12px 16px;
+  border-bottom:1px solid var(--ring); flex:0 0 auto; flex-wrap:wrap;
+}
+header h1{font-size:15px; margin:0; font-weight:600}
+header .sub{color:var(--muted); font-size:12px}
+.stage{
+  flex:1 1 auto; position:relative; overflow:auto; padding:16px;
+  background:
+    radial-gradient(circle at 1px 1px, var(--grid) 1px, transparent 0) 0 0/24px 24px,
+    var(--page);
+}
+svg{display:block; margin:0 auto; max-width:880px; width:100%; height:auto}
+.node{cursor:pointer; transition:opacity .2s}
+.node:hover{opacity:.85}
+.node rect{stroke-width:2; rx:8; ry:8; transition:filter .2s}
+.node.dim{opacity:.28}
+.node.active rect{filter:drop-shadow(0 0 6px currentColor)}
+.edge{stroke:var(--muted); stroke-width:1.5; fill:none; marker-end:url(#arrow); opacity:.5; transition:opacity .2s}
+.edge.active{opacity:1; stroke-width:2.5}
+.edge.dim{opacity:.12}
+.edge-label{fill:var(--text-secondary); font-size:11px; pointer-events:none}
+.legend{
+  display:flex; gap:12px; flex-wrap:wrap; padding:10px 16px;
+  border-top:1px solid var(--ring); flex:0 0 auto; background:var(--surface-1);
+}
+.legend .item{display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-secondary)}
+.legend .dot{width:10px; height:10px; border-radius:3px}
+.detail{
+  position:absolute; left:16px; bottom:16px; right:16px; max-width:560px;
+  background:var(--surface-1); border:1px solid var(--ring); border-radius:10px;
+  padding:12px 14px; font-size:13px; color:var(--text-secondary);
+  box-shadow:0 4px 16px rgba(0,0,0,.08);
+}
+.detail b{color:var(--text-primary)}
+.detail .row{margin-top:6px}
+.detail .k{color:var(--accent); font-weight:600; margin-right:4px}
+button.reset{
+  appearance:none; border:1px solid var(--ring); background:var(--surface-1);
+  color:var(--text-secondary); font:inherit; font-size:12px; padding:4px 10px;
+  border-radius:6px; cursor:pointer; margin-left:auto;
+}
+button.reset:hover{color:var(--text-primary); border-color:var(--accent)}
+</style>
+</head>
+<body>
+<header>
+  <h1>标定失败归因 Agent · 架构闭环</h1>
+  <span class="sub">点任一环节看职责 / 复用基建 / 工程化护栏</span>
+  <button class="reset" onclick="reset()">重置</button>
+</header>
+<div class="stage">
+  <svg viewBox="0 0 880 360" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/>
+      </marker>
+      <marker id="arrow-active" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/>
+      </marker>
+    </defs>
+
+    <!-- 主流程行 y≈187 -->
+    <g class="node" data-node="entry" transform="translate(20,160)">
+      <rect width="120" height="54" fill="var(--entry)" fill-opacity=".15" stroke="var(--entry)"/>
+      <text x="60" y="26" text-anchor="middle" fill="var(--text-primary)" font-size="13" font-weight="600">前端入口</text>
+      <text x="60" y="42" text-anchor="middle" fill="var(--text-secondary)" font-size="11">宿主助手</text>
+    </g>
+    <g class="node" data-node="gateway" transform="translate(180,160)">
+      <rect width="80" height="54" fill="var(--gateway)" fill-opacity=".15" stroke="var(--gateway)"/>
+      <text x="40" y="30" text-anchor="middle" fill="var(--text-primary)" font-size="13" font-weight="600">网关</text>
+    </g>
+    <g class="node" data-node="orch" transform="translate(300,160)">
+      <rect width="120" height="54" fill="var(--orch)" fill-opacity=".15" stroke="var(--orch)"/>
+      <text x="60" y="26" text-anchor="middle" fill="var(--text-primary)" font-size="13" font-weight="600">归因 Agent</text>
+      <text x="60" y="42" text-anchor="middle" fill="var(--text-secondary)" font-size="11">编排器</text>
+    </g>
+
+    <!-- 三处数据源 -->
+    <g class="node" data-node="ds1" transform="translate(470,40)">
+      <rect width="170" height="50" fill="var(--ds)" fill-opacity=".15" stroke="var(--ds)"/>
+      <text x="85" y="22" text-anchor="middle" fill="var(--text-primary)" font-size="12" font-weight="600">标定结果库</text>
+      <text x="85" y="38" text-anchor="middle" fill="var(--text-secondary)" font-size="11">Hologres</text>
+    </g>
+    <g class="node" data-node="ds2" transform="translate(470,162)">
+      <rect width="170" height="50" fill="var(--ds)" fill-opacity=".15" stroke="var(--ds)"/>
+      <text x="85" y="22" text-anchor="middle" fill="var(--text-primary)" font-size="12" font-weight="600">原始数据质量</text>
+      <text x="85" y="38" text-anchor="middle" fill="var(--text-secondary)" font-size="11">对象存储 + Hologres</text>
+    </g>
+    <g class="node" data-node="ds3" transform="translate(470,284)">
+      <rect width="170" height="50" fill="var(--ds)" fill-opacity=".15" stroke="var(--ds)"/>
+      <text x="85" y="22" text-anchor="middle" fill="var(--text-primary)" font-size="12" font-weight="600">车辆链路状态</text>
+      <text x="85" y="38" text-anchor="middle" fill="var(--text-secondary)" font-size="11">Kafka + Redisson</text>
+    </g>
+
+    <g class="node" data-node="llm" transform="translate(690,160)">
+      <rect width="80" height="54" fill="var(--llm)" fill-opacity=".15" stroke="var(--llm)"/>
+      <text x="40" y="30" text-anchor="middle" fill="var(--text-primary)" font-size="13" font-weight="600">LLM</text>
+    </g>
+    <g class="node" data-node="im" transform="translate(770,160)">
+      <rect width="90" height="54" fill="var(--im)" fill-opacity=".15" stroke="var(--im)" stroke-dasharray="4 3"/>
+      <text x="45" y="26" text-anchor="middle" fill="var(--text-primary)" font-size="13" font-weight="600">办公 IM</text>
+      <text x="45" y="42" text-anchor="middle" fill="var(--text-secondary)" font-size="11">闭环</text>
+    </g>
+
+    <!-- 边 -->
+    <g class="edge" data-from="entry" data-to="gateway">
+      <path d="M140,187 L180,187"/>
+    </g>
+    <g class="edge" data-from="gateway" data-to="orch">
+      <path d="M260,187 L300,187"/>
+    </g>
+    <g class="edge" data-from="orch" data-to="ds1">
+      <path d="M420,178 C445,120 455,90 470,72"/>
+      <text x="448" y="120" class="edge-label">查结果</text>
+    </g>
+    <g class="edge" data-from="orch" data-to="ds2">
+      <path d="M420,187 L470,187"/>
+      <text x="445" y="180" class="edge-label">查数据</text>
+    </g>
+    <g class="edge" data-from="orch" data-to="ds3">
+      <path d="M420,196 C445,250 455,280 470,300"/>
+      <text x="448" y="262" class="edge-label">查链路</text>
+    </g>
+    <g class="edge" data-from="ds1" data-to="llm">
+      <path d="M640,72 C670,120 685,150 690,170"/>
+    </g>
+    <g class="edge" data-from="ds2" data-to="llm">
+      <path d="M640,187 L690,187"/>
+    </g>
+    <g class="edge" data-from="ds3" data-to="llm">
+      <path d="M640,302 C670,255 685,225 690,205"/>
+    </g>
+    <g class="edge" data-from="llm" data-to="im">
+      <path d="M770,187 L790,187"/>
+      <text x="780" y="180" class="edge-label">推送</text>
+    </g>
+    <!-- 闭环回环虚线:办公IM → 前端入口 -->
+    <g class="edge" data-from="im" data-to="entry" data-loop="1">
+      <path d="M815,214 C815,330 80,330 80,214" stroke-dasharray="5 4"/>
+      <text x="440" y="328" text-anchor="middle" class="edge-label">闭环:结论回到前端 + 通知责任人</text>
+    </g>
+  </svg>
+  <div class="detail" id="detail">点任意环节,看它的<b>职责</b>、<b>复用哪块已有基建</b>、<b>工程化护栏</b>。绿色虚线是办公 IM 闭环——结论推送到群里并回到前端。</div>
+</div>
+<div class="legend">
+  <div class="item"><span class="dot" style="background:var(--entry)"></span>前端入口</div>
+  <div class="item"><span class="dot" style="background:var(--gateway)"></span>网关</div>
+  <div class="item"><span class="dot" style="background:var(--orch)"></span>Agent 编排器</div>
+  <div class="item"><span class="dot" style="background:var(--ds)"></span>三处数据源</div>
+  <div class="item"><span class="dot" style="background:var(--llm)"></span>LLM 归因</div>
+  <div class="item"><span class="dot" style="background:var(--im)"></span>办公 IM 闭环</div>
+</div>
+<script>
+const META = {
+  entry:{color:"var(--entry)", role:"工程师在宿主应用的助手入口提问,如『这次标定为什么失败』。", reuse:"复用宿主应用已有的助手会话壳,不新建前端。", guard:"入口做意图校验——非标定归因意图直接走通用助手,不进归因编排。"},
+  gateway:{color:"var(--gateway)", role:"鉴权、限流、链路 trace 注入。", reuse:"复用现有网关 + 链路追踪(Sleuth),agent 调用与普通请求同 trace 体系。", guard:"限流防 agent 被刷爆;每会话/每用户配额,超配额拒绝。"},
+  orch:{color:"var(--orch)", role:"编排多步:并发查三处数据源 → 汇总 → 调 LLM 归因 → 推办公 IM。", reuse:"用 Argo 做 DAG 编排;长任务复用车云链路那套状态机 + 看门狗兜底 LLM 超时(见车云链路篇)。", guard:"工具白名单:只能调指定的只读查询和办公 IM 推送,无任何写权限;LLM 输出结构化 JSON,不直接执行。"},
+  ds1:{color:"var(--ds)", role:"查标定通过率、失败码、历次标定记录。", reuse:"复用 Hologres 已有的标定结果查询,不新建数据源。", guard:"只读视图,不暴露原始表结构;查询走只读账号。"},
+  ds2:{color:"var(--ds)", role:"查本次标定用的传感器原始数据质量(点云完整度、帧率、多传感器时间对齐)。", reuse:"复用对象存储签名 URL + Hologres 的数据质量统计。", guard:"只读;数据量超阈值降级采样,不把全量原始数据塞给 LLM。"},
+  ds3:{color:"var(--ds)", role:"查车辆在线状态、采集链路是否正常、传感器硬件状态。", reuse:"复用车云链路的 Kafka 上行 + Redisson 在线状态(见车云链路篇)。", guard:"只读快照,绝不触发任何车端动作;查的是状态不是控制。"},
+  llm:{color:"var(--llm)", role:"基于三处数据汇总,给出失败归因 + 置信度 + 处置建议。", reuse:"复用现有 LLM 网关(若已接),统一 token 计量。", guard:"token 预算上限熔断;相同失败结论缓存不重复调;输出结构化,由编排器决定是否推送。"},
+  im:{color:"var(--im)", role:"归因结论推送到办公 IM 群,通知责任人,闭环。", reuse:"复用办公 IM 机器人。", guard:"只发结论 + 数据链接,不发原始数据;通知责任人走白名单,不群发。"}
+};
+const nodes = document.querySelectorAll(".node");
+const edges = document.querySelectorAll(".edge");
+const detailEl = document.getElementById("detail");
+function highlight(name){
+  nodes.forEach(n=>{
+    if(n.dataset.node===name){n.classList.add("active");n.classList.remove("dim")}
+    else{n.classList.remove("active");n.classList.add("dim")}
+  });
+  edges.forEach(e=>{
+    const from=e.dataset.from, to=e.dataset.to;
+    if(from===name || to===name){
+      e.classList.add("active"); e.classList.remove("dim");
+      const p=e.querySelector("path:not([stroke='none'])")||e.querySelector("path");
+      if(p)p.setAttribute("marker-end","url(#arrow-active)");
+    }else{
+      e.classList.remove("active"); e.classList.add("dim");
+      e.querySelectorAll("path").forEach(p=>p.setAttribute("marker-end","url(#arrow)"));
+    }
+  });
+  const m=META[name]; if(!m)return;
+  detailEl.innerHTML = `<b style="color:${m.color}">${name}</b><div class="row"><span class="k">职责:</span>${m.role}</div><div class="row"><span class="k">复用基建:</span>${m.reuse}</div><div class="row"><span class="k">护栏:</span>${m.guard}</div>`;
+}
+function reset(){
+  nodes.forEach(n=>{n.classList.remove("active","dim")});
+  edges.forEach(e=>{e.classList.remove("active","dim"); e.querySelectorAll("path").forEach(p=>p.setAttribute("marker-end","url(#arrow)"))});
+  detailEl.innerHTML="点任意环节,看它的<b>职责</b>、<b>复用哪块已有基建</b>、<b>工程化护栏</b>。绿色虚线是办公 IM 闭环——结论推送到群里并回到前端。";
+}
+nodes.forEach(n=>n.addEventListener("click",()=>highlight(n.dataset.node)));
+window.addEventListener("message",e=>{if(e.data&&e.data.theme){document.documentElement.setAttribute("data-theme",e.data.theme)}});
+const u=new URLSearchParams(location.search); if(u.has("theme"))document.documentElement.setAttribute("data-theme",u.get("theme"));
+</script>
+</body>
+</html>
