@@ -109,7 +109,7 @@ actions/checkout@v4, actions/setup-node@v4, pnpm/action-setup@v4
 
 罪魁是我写的根 `.gitignore`：
 
-```gitignore
+```text
 posts/          # ← 想忽略根目录的迁移临时产物
 assets/         # ← 同上
 ```
@@ -126,7 +126,7 @@ assets/         # ← 同上
 
 **改法**：加前导斜杠，锚定到仓库根。
 
-```gitignore
+```text
 /posts/
 /assets/
 /rescued/
