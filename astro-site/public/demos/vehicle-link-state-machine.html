@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>车云链路状态机</title>
+<style>
+:root{
+  color-scheme: light;
+  --page:#f9f9f7; --surface-1:#fcfcfb;
+  --text-primary:#0b0b0b; --text-secondary:#52514e; --muted:#898781;
+  --ring:rgba(11,11,11,.10); --grid:#e1e0d9;
+  --created:#898781; --sent:#3987e5; --acked:#eda100; --running:#1baf7a;
+  --stalled:#d95926; --retry:#e87ba4;
+  --success:#0ca30c; --failed:#d03b3b; --timeout:#6b3fb0; --delivery:#b03b6b;
+  --accent:#2a78d6; --track:#e1e0d9;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme: dark;
+    --page:#0d0d0d; --surface-1:#1a1a19;
+    --text-primary:#fff; --text-secondary:#c3c2b7; --muted:#898781;
+    --ring:rgba(255,255,255,.10); --grid:#2c2c2a;
+    --created:#898781; --sent:#3987e5; --acked:#c98500; --running:#199e70;
+    --stalled:#d95926; --retry:#d55181;
+    --success:#0ca30c; --failed:#d03b3b; --timeout:#9b6fd6; --delivery:#d551a0;
+    --accent:#3987e5; --track:#2c2c2a;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --page:#0d0d0d; --surface-1:#1a1a19;
+  --text-primary:#fff; --text-secondary:#c3c2b7; --muted:#898781;
+  --ring:rgba(255,255,255,.10); --grid:#2c2c2a;
+  --created:#898781; --sent:#3987e5; --acked:#c98500; --running:#199e70;
+  --stalled:#d95926; --retry:#d55181;
+  --success:#0ca30c; --failed:#d03b3b; --timeout:#9b6fd6; --delivery:#d551a0;
+  --accent:#3987e5; --track:#2c2c2a;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{
+  background:var(--page); color:var(--text-primary);
+  font:14px/1.5 system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  display:flex; flex-direction:column; overflow:hidden;
+}
+header{
+  display:flex; align-items:center; gap:12px; padding:12px 16px;
+  border-bottom:1px solid var(--ring); flex:0 0 auto; flex-wrap:wrap;
+}
+header h1{font-size:15px; margin:0; font-weight:600}
+header .sub{color:var(--muted); font-size:12px}
+.stage{
+  flex:1 1 auto; position:relative; overflow:auto; padding:16px;
+  background:
+    radial-gradient(circle at 1px 1px, var(--grid) 1px, transparent 0) 0 0/24px 24px,
+    var(--page);
+}
+svg{display:block; margin:0 auto; max-width:760px; width:100%; height:auto}
+.node{
+  cursor:pointer; transition:opacity .2s, transform .2s;
+  transform-origin:center; transform-box:fill-box;
+}
+.node:hover{opacity:.85}
+.node rect{
+  stroke-width:2; rx:8; ry:8;
+  transition:filter .2s;
+}
+.node.dim{opacity:.28}
+.node.active rect{filter:drop-shadow(0 0 6px currentColor)}
+.edge{stroke:var(--muted); stroke-width:1.5; fill:none; marker-end:url(#arrow); opacity:.5; transition:opacity .2s}
+.edge.active{opacity:1; stroke-width:2.5}
+.edge.dim{opacity:.12}
+.edge-label{fill:var(--text-secondary); font-size:11px; pointer-events:none}
+.legend{
+  display:flex; gap:10px; flex-wrap:wrap; padding:10px 16px;
+  border-top:1px solid var(--ring); flex:0 0 auto; background:var(--surface-1);
+}
+.legend .item{display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-secondary)}
+.legend .dot{width:10px; height:10px; border-radius:3px}
+.detail{
+  position:absolute; left:16px; bottom:16px; right:16px; max-width:520px;
+  background:var(--surface-1); border:1px solid var(--ring); border-radius:10px;
+  padding:12px 14px; font-size:13px; color:var(--text-secondary);
+  box-shadow:0 4px 16px rgba(0,0,0,.08);
+}
+.detail b{color:var(--text-primary)}
+.detail .tag{display:inline-block; padding:1px 7px; border-radius:999px; font-size:11px; font-weight:600; color:#fff}
+.detail .trigger{color:var(--accent); font-weight:600}
+.terminal{font-size:11px; color:var(--muted); text-align:center}
+button.reset{
+  appearance:none; border:1px solid var(--ring); background:var(--surface-1);
+  color:var(--text-secondary); font:inherit; font-size:12px; padding:4px 10px;
+  border-radius:6px; cursor:pointer; margin-left:auto;
+}
+button.reset:hover{color:var(--text-primary); border-color:var(--accent)}
+</style>
+</head>
+<body>
+<header>
+  <h1>车云链路长任务状态机</h1>
+  <span class="sub">点状态看转移 · 看门狗兜底的失联判定</span>
+  <button class="reset" onclick="reset()">重置</button>
+</header>
+<div class="stage">
+  <svg viewBox="0 0 760 440" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/>
+      </marker>
+      <marker id="arrow-active" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/>
+      </marker>
+    </defs>
+
+    <!-- 中间态行 -->
+    <g class="node" data-state="CREATED" transform="translate(40,180)">
+      <rect width="92" height="44" fill="var(--created)" fill-opacity=".15" stroke="var(--created)"/>
+      <text x="46" y="28" text-anchor="middle" fill="var(--text-primary)" font-size="13" font-weight="600">CREATED</text>
+    </g>
+    <g class="node" data-state="SENT" transform="translate(170,180)">
+      <rect width="80" height="44" fill="var(--sent)" fill-opacity=".15" stroke="var(--sent)"/>
+      <text x="40" y="28" text-anchor="middle" fill="var(--text-primary)" font-size="13" font-weight="600">SENT</text>
+    </g>
+    <g class="node" data-state="ACKED" transform="translate(290,180)">
+      <rect width="80" height="44" fill="var(--acked)" fill-opacity=".15" stroke="var(--acked)"/>
+      <text x="40" y="28" text-anchor="middle" fill="var(--text-primary)" font-size="13" font-weight="600">ACKED</text>
+    </g>
+    <g class="node" data-state="RUNNING" transform="translate(410,180)">
+      <rect width="88" height="44" fill="var(--running)" fill-opacity=".15" stroke="var(--running)"/>
+      <text x="44" y="28" text-anchor="middle" fill="var(--text-primary)" font-size="13" font-weight="600">RUNNING</text>
+    </g>
+    <g class="node" data-state="STALLED" transform="translate(540,180)">
+      <rect width="86" height="44" fill="var(--stalled)" fill-opacity=".15" stroke="var(--stalled)"/>
+      <text x="43" y="28" text-anchor="middle" fill="var(--text-primary)" font-size="13" font-weight="600">STALLED</text>
+    </g>
+    <g class="node" data-state="RETRY_WAIT" transform="translate(290,70)">
+      <rect width="100" height="44" fill="var(--retry)" fill-opacity=".15" stroke="var(--retry)"/>
+      <text x="50" y="28" text-anchor="middle" fill="var(--text-primary)" font-size="13" font-weight="600">RETRY_WAIT</text>
+    </g>
+
+    <!-- 终态行 -->
+    <g class="node" data-state="SUCCESS" transform="translate(410,350)">
+      <rect width="88" height="44" fill="var(--success)" fill-opacity=".15" stroke="var(--success)" stroke-dasharray="4 3"/>
+      <text x="44" y="24" text-anchor="middle" fill="var(--text-primary)" font-size="13" font-weight="600">SUCCESS</text>
+      <text x="44" y="38" text-anchor="middle" class="terminal">终态</text>
+    </g>
+    <g class="node" data-state="FAILED" transform="translate(540,350)">
+      <rect width="80" height="44" fill="var(--failed)" fill-opacity=".15" stroke="var(--failed)" stroke-dasharray="4 3"/>
+      <text x="40" y="24" text-anchor="middle" fill="var(--text-primary)" font-size="13" font-weight="600">FAILED</text>
+      <text x="40" y="38" text-anchor="middle" class="terminal">终态</text>
+    </g>
+    <g class="node" data-state="TIMEOUT" transform="translate(660,350)">
+      <rect width="86" height="44" fill="var(--timeout)" fill-opacity=".15" stroke="var(--timeout)" stroke-dasharray="4 3"/>
+      <text x="43" y="24" text-anchor="middle" fill="var(--text-primary)" font-size="13" font-weight="600">TIMEOUT</text>
+      <text x="43" y="38" text-anchor="middle" class="terminal">终态</text>
+    </g>
+    <g class="node" data-state="DELIVERY_FAILED" transform="translate(120,350)">
+      <rect width="120" height="44" fill="var(--delivery)" fill-opacity=".15" stroke="var(--delivery)" stroke-dasharray="4 3"/>
+      <text x="60" y="24" text-anchor="middle" fill="var(--text-primary)" font-size="12" font-weight="600">DELIVERY_FAILED</text>
+      <text x="60" y="38" text-anchor="middle" class="terminal">终态</text>
+    </g>
+
+    <!-- 边 -->
+    <g class="edge" data-from="CREATED" data-to="SENT" data-event="SENT">
+      <path d="M132,202 L170,202"/>
+      <text x="151" y="196" text-anchor="middle" class="edge-label">SENT</text>
+    </g>
+    <g class="edge" data-from="CREATED" data-to="DELIVERY_FAILED" data-event="DELIVERY_FAILED">
+      <path d="M86,224 L160,350"/>
+      <text x="100" y="295" class="edge-label">投递失败</text>
+    </g>
+    <g class="edge" data-from="SENT" data-to="ACKED" data-event="ACK">
+      <path d="M250,202 L290,202"/>
+      <text x="270" y="196" text-anchor="middle" class="edge-label">ACK</text>
+    </g>
+    <g class="edge" data-from="SENT" data-to="DELIVERY_FAILED" data-event="DELIVERY_FAILED">
+      <path d="M200,224 L180,350"/>
+    </g>
+    <g class="edge" data-from="SENT" data-to="RETRY_WAIT" data-event="ERROR_BUSY">
+      <path d="M200,180 L295,114"/>
+      <text x="225" y="150" class="edge-label">BUSY</text>
+    </g>
+    <g class="edge" data-from="ACKED" data-to="RUNNING" data-event="PROGRESS">
+      <path d="M370,202 L410,202"/>
+      <text x="390" y="196" text-anchor="middle" class="edge-label">PROGRESS</text>
+    </g>
+    <g class="edge" data-from="RUNNING" data-to="STALLED" data-event="STALL">
+      <path d="M498,202 L540,202"/>
+      <text x="519" y="196" text-anchor="middle" class="edge-label">心跳超时</text>
+    </g>
+    <g class="edge" data-from="STALLED" data-to="RUNNING" data-event="PROGRESS">
+      <path d="M540,214 C510,250 470,250 445,224"/>
+      <text x="492" y="248" text-anchor="middle" class="edge-label">心跳恢复</text>
+    </g>
+    <g class="edge" data-from="RETRY_WAIT" data-to="SENT" data-event="RETRY_DUE">
+      <path d="M330,114 C250,140 220,150 210,180"/>
+      <text x="270" y="130" class="edge-label">退避到点重发</text>
+    </g>
+    <g class="edge" data-from="RUNNING" data-to="SUCCESS" data-event="RESULT_SUCCESS">
+      <path d="M454,224 L454,350"/>
+      <text x="466" y="290" class="edge-label">成功</text>
+    </g>
+    <g class="edge" data-from="RUNNING" data-to="FAILED" data-event="RESULT_FAILED">
+      <path d="M488,224 L560,350"/>
+      <text x="535" y="295" class="edge-label">车端报错</text>
+    </g>
+    <g class="edge" data-from="STALLED" data-to="TIMEOUT" data-event="DEADLINE">
+      <path d="M600,224 L688,350"/>
+      <text x="650" y="295" class="edge-label">超总时限</text>
+    </g>
+    <g class="edge" data-from="ACKED" data-to="TIMEOUT" data-event="DEADLINE">
+      <path d="M350,224 C400,300 600,310 660,350"/>
+    </g>
+    <g class="edge" data-from="SENT" data-to="SENT" data-event="ACK_TIMEOUT">
+      <path d="M180,178 C160,160 160,150 195,150 C235,150 240,160 225,178"/>
+      <text x="210" y="142" text-anchor="middle" class="edge-label">ACK 超时重发</text>
+    </g>
+  </svg>
+  <div class="detail" id="detail">点任意状态节点,看它的所有转移与触发条件。绿色虚线框是终态——任意终态后所有事件被忽略(幂等)。</div>
+</div>
+<div class="legend">
+  <div class="item"><span class="dot" style="background:var(--created)"></span>已创建</div>
+  <div class="item"><span class="dot" style="background:var(--sent)"></span>已投递</div>
+  <div class="item"><span class="dot" style="background:var(--acked)"></span>已确认</div>
+  <div class="item"><span class="dot" style="background:var(--running)"></span>执行中</div>
+  <div class="item"><span class="dot" style="background:var(--stalled)"></span>疑似失联</div>
+  <div class="item"><span class="dot" style="background:var(--retry)"></span>退避待重发</div>
+  <div class="item"><span class="dot" style="background:var(--success)"></span>成功·终态</div>
+  <div class="item"><span class="dot" style="background:var(--failed)"></span>失败·终态</div>
+  <div class="item"><span class="dot" style="background:var(--timeout)"></span>超时·终态</div>
+  <div class="item"><span class="dot" style="background:var(--delivery)"></span>投递失败·终态</div>
+</div>
+<script>
+const META = {
+  CREATED:{color:"var(--created)", desc:"任务已创建,下行命令尚未投递到 Kafka。", trigger:"任务管理器提交后的初始态"},
+  SENT:{color:"var(--sent)", desc:"下行命令已投递到 Kafka 下行主题,等车端 agent ACK。", trigger:"下行发送器发送成功"},
+  ACKED:{color:"var(--acked)", desc:"车端已确认收到命令,等首个进度上报。", trigger:"车端 agent 回 ACK"},
+  RUNNING:{color:"var(--running)", desc:"执行中——已收到至少一次 PROGRESS/HEARTBEAT。", trigger:"车端按 manifest steps 上报 PROGRESS"},
+  STALLED:{color:"var(--stalled)", desc:"心跳/进度超时未到,疑似车端失联(可恢复)。看门狗判 STALL。", trigger:"看门狗: ACKED/RUNNING 且超心跳容忍截止"},
+  RETRY_WAIT:{color:"var(--retry)", desc:"车端回了可重试错误(如 BUSY),退避等待重发(可恢复)。默认关闭。", trigger:"车端回可重试错误 + 错误码在白名单 + 重试预算未耗尽"},
+  SUCCESS:{color:"var(--success)", desc:"车端上报成功结果。终态——后续事件全忽略(幂等)。", trigger:"RESULT_SUCCESS"},
+  FAILED:{color:"var(--failed)", desc:"车端报错或返回失败结果。终态。", trigger:"RESULT_FAILED / 非白名单 ERROR"},
+  TIMEOUT:{color:"var(--timeout)", desc:"超总截止时间仍未结束。终态。看门狗判 DEADLINE。", trigger:"看门狗: 超总截止时间"},
+  DELIVERY_FAILED:{color:"var(--delivery)", desc:"下行始终未投递成功 / 车端始终无 ACK。终态。", trigger:"DELIVERY_FAILED / 投递重试耗尽"}
+};
+const nodes = document.querySelectorAll(".node");
+const edges = document.querySelectorAll(".edge");
+const detailEl = document.getElementById("detail");
+function highlight(state){
+  nodes.forEach(n=>{
+    if(n.dataset.state===state){n.classList.add("active");n.classList.remove("dim")}
+    else{n.classList.remove("active");n.classList.add("dim")}
+  });
+  edges.forEach(e=>{
+    const from=e.dataset.from, to=e.dataset.to, ev=e.dataset.event;
+    if(from===state || to===state){
+      e.classList.add("active"); e.classList.remove("dim");
+      const marker=e.querySelector("path"); if(marker)marker.setAttribute("marker-end","url(#arrow-active)");
+    }else{
+      e.classList.remove("active"); e.classList.add("dim");
+      const marker=e.querySelector("path"); if(marker)marker.setAttribute("marker-end","url(#arrow)");
+    }
+  });
+  const m=META[state]; if(!m)return;
+  const outs=[...edges].filter(e=>e.dataset.from===state).map(e=>`<b>${e.dataset.to}</b> ← <span class="trigger">${e.dataset.event||"→"}</span>`);
+  const ins=[...edges].filter(e=>e.dataset.to===state && e.dataset.from!==e.dataset.to).map(e=>`<span class="trigger">${e.dataset.event||"→"}</span> → <b>${e.dataset.from}</b>`);
+  const term=m.desc.includes("终态")?`<span class="tag" style="background:${m.color}">终态</span> `:"";
+  detailEl.innerHTML = `${term}<b style="color:${m.color}">${state}</b> — ${m.desc}<br><b>触发:</b> ${m.trigger}${outs.length?`<br><b>可转移到:</b><br>${outs.join("<br>")}`:""}${ins.length?`<br><b>可来自:</b><br>${ins.join("<br>")}`:""}`;
+}
+function reset(){
+  nodes.forEach(n=>{n.classList.remove("active","dim")});
+  edges.forEach(e=>{e.classList.remove("active","dim"); const p=e.querySelector("path"); if(p)p.setAttribute("marker-end","url(#arrow)")});
+  detailEl.innerHTML="点任意状态节点,看它的所有转移与触发条件。绿色虚线框是终态——任意终态后所有事件被忽略(幂等)。";
+}
+nodes.forEach(n=>n.addEventListener("click",()=>highlight(n.dataset.state)));
+// 父页主题同步
+window.addEventListener("message",e=>{if(e.data&&e.data.theme){document.documentElement.setAttribute("data-theme",e.data.theme)}});
+const u=new URLSearchParams(location.search); if(u.has("theme"))document.documentElement.setAttribute("data-theme",u.get("theme"));
+</script>
+</body>
+</html>
