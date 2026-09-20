@@ -2,7 +2,7 @@ name: Deploy Blog
 
 on:
   push:
-    branches: [hexo, master, main]
+    branches: [hexo, master, main, astro-blog]
   workflow_dispatch:
 
 permissions:
