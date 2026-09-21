@@ -1,0 +1,293 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "一个真实后端项目：一次请求从网关到数据库（已脱敏）",
+    "locale": "zh-CN",
+    "output": "backend-request-flow.html",
+    "viewBox": [
+      1080,
+      560
+    ],
+    "column_fit": "spread",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "auth",
+        "label": "1. 网关鉴权",
+        "focus": [
+          "browser",
+          "gateway",
+          "redis"
+        ],
+        "note": "浏览器带访问令牌请求；网关查 Redis 反序列化出当前用户，查不到即判定令牌失效。"
+      },
+      {
+        "id": "fallback",
+        "label": "2. 权限缓存回源",
+        "focus": [
+          "gateway",
+          "redis",
+          "user"
+        ],
+        "note": "按 API 路径查权限缓存，未命中才 Feign 回源用户权限服务并回填——这是第一张图的真实版本。"
+      },
+      {
+        "id": "business",
+        "label": "3. 落库与副作用",
+        "focus": [
+          "gateway",
+          "biz",
+          "mysql",
+          "im"
+        ],
+        "note": "网关按配置中心下发的路由转发；业务服务事务写 MySQL，并异步发起企业 IM 审批。"
+      }
+    ]
+  },
+  "participants": [
+    {
+      "id": "browser",
+      "type": "external",
+      "label": "浏览器",
+      "sublabel": "宿主 + 子应用"
+    },
+    {
+      "id": "gateway",
+      "type": "security",
+      "label": "API 网关",
+      "sublabel": "Spring Cloud Gateway"
+    },
+    {
+      "id": "redis",
+      "type": "database",
+      "label": "Redis",
+      "sublabel": "token / 权限缓存"
+    },
+    {
+      "id": "user",
+      "type": "backend",
+      "label": "用户权限服务",
+      "sublabel": "Feign 回源目标"
+    },
+    {
+      "id": "biz",
+      "type": "backend",
+      "label": "业务服务",
+      "sublabel": "业务处理层"
+    },
+    {
+      "id": "mysql",
+      "type": "database",
+      "label": "MySQL",
+      "sublabel": "业务主库 · JPA"
+    },
+    {
+      "id": "im",
+      "type": "external",
+      "label": "企业 IM",
+      "sublabel": "审批与回调"
+    }
+  ],
+  "segments": [
+    {
+      "from": 155,
+      "to": 232,
+      "label": "请求与鉴权"
+    },
+    {
+      "from": 238,
+      "to": 348,
+      "label": "权限缓存未命中，回源"
+    },
+    {
+      "from": 355,
+      "to": 490,
+      "label": "业务落库与响应"
+    }
+  ],
+  "messages": [
+    {
+      "id": "http-request",
+      "from": "browser",
+      "to": "gateway",
+      "y": 160,
+      "label": "POST /api/business/create",
+      "variant": "emphasis",
+      "note": "请求头带自定义访问令牌"
+    },
+    {
+      "id": "token-check",
+      "from": "gateway",
+      "to": "redis",
+      "y": 189,
+      "label": "GET token:{accessToken}",
+      "variant": "security",
+      "note": "GlobalFilter：令牌不是 JWT，直接查 Redis 取用户"
+    },
+    {
+      "id": "token-user",
+      "from": "redis",
+      "to": "gateway",
+      "y": 218,
+      "label": "用户对象 JSON",
+      "variant": "return",
+      "note": "查不到即抛 token 失效异常，返回错误码"
+    },
+    {
+      "id": "permission-read",
+      "from": "gateway",
+      "to": "redis",
+      "y": 247,
+      "label": "GET api-permission:{path}",
+      "variant": "default"
+    },
+    {
+      "id": "permission-miss",
+      "from": "redis",
+      "to": "gateway",
+      "y": 276,
+      "label": "nil（未命中）",
+      "variant": "return"
+    },
+    {
+      "id": "permission-fallback",
+      "from": "gateway",
+      "to": "user",
+      "y": 305,
+      "label": "Feign 查该 API 的权限列表",
+      "variant": "emphasis",
+      "note": "仅在缓存未命中时回源"
+    },
+    {
+      "id": "permission-backfill",
+      "from": "user",
+      "to": "gateway",
+      "y": 334,
+      "label": "权限列表（并回填 Redis）",
+      "variant": "return"
+    },
+    {
+      "id": "route-forward",
+      "from": "gateway",
+      "to": "biz",
+      "y": 362,
+      "label": "按配置中心路由转发",
+      "variant": "emphasis",
+      "note": "附带用户身份与权限校验结果"
+    },
+    {
+      "id": "db-write",
+      "from": "biz",
+      "to": "mysql",
+      "y": 391,
+      "label": "事务写入业务数据与流转留痕",
+      "variant": "default"
+    },
+    {
+      "id": "db-ack",
+      "from": "mysql",
+      "to": "biz",
+      "y": 420,
+      "label": "commit OK",
+      "variant": "return"
+    },
+    {
+      "id": "approval",
+      "from": "biz",
+      "to": "im",
+      "y": 449,
+      "label": "发起审批（异步）",
+      "variant": "dashed",
+      "note": "IM 回调专用 Controller 写回状态，回调必须幂等"
+    },
+    {
+      "id": "http-response",
+      "from": "biz",
+      "to": "browser",
+      "y": 477,
+      "label": "200 统一响应体",
+      "variant": "return",
+      "note": "经网关原路返回"
+    }
+  ],
+  "activations": [
+    {
+      "participant": "browser",
+      "from": 157,
+      "to": 485,
+      "type": "external"
+    },
+    {
+      "participant": "gateway",
+      "from": 160,
+      "to": 368,
+      "type": "security"
+    },
+    {
+      "participant": "redis",
+      "from": 184,
+      "to": 223,
+      "type": "database"
+    },
+    {
+      "participant": "redis",
+      "from": 242,
+      "to": 281,
+      "type": "database"
+    },
+    {
+      "participant": "user",
+      "from": 300,
+      "to": 339,
+      "type": "backend"
+    },
+    {
+      "participant": "biz",
+      "from": 357,
+      "to": 483,
+      "type": "backend"
+    },
+    {
+      "participant": "mysql",
+      "from": 386,
+      "to": 425,
+      "type": "database"
+    },
+    {
+      "participant": "im",
+      "from": 444,
+      "to": 458,
+      "type": "external"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "鉴权链关键细节",
+      "items": [
+        "token 不是 JWT，直接查 Redis 取用户对象",
+        "登出即失效，代价是强依赖 Redis 可用",
+        "权限判定三档，不匹配返回 404「未知接口」"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "不在同步链路里的部分",
+      "items": [
+        "路由由 Nacos 动态下发并热更新",
+        "采集侧另有 PostgreSQL 存 GIS/点云",
+        "大文件走 MinIO，Kafka 承担异步消息"
+      ]
+    },
+    {
+      "dot": "orange",
+      "title": "技术栈（pom.xml 证据）",
+      "items": [
+        "Java 11 + Spring Boot 2.3.12",
+        "Spring Cloud Alibaba 2.2.6 + Gateway",
+        "OpenFeign + JPA + Redis 客户端 + spring-kafka"
+      ]
+    }
+  ]
+}
