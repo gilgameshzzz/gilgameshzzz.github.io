@@ -1,0 +1,230 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "网站请求流程：Redis 缓存优先，未命中回源 PostgreSQL 并回填",
+    "locale": "zh-CN",
+    "output": "cache-miss-flow.html",
+    "viewBox": [
+      1080,
+      560
+    ],
+    "column_fit": "spread",
+    "animation": "trace",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "request",
+        "label": "请求进入",
+        "focus": [
+          "browser",
+          "api"
+        ],
+        "note": "浏览器发起 API 请求，服务端先按缓存优先策略处理。"
+      },
+      {
+        "id": "cache-hit",
+        "label": "缓存命中（快路径）",
+        "focus": [
+          "api",
+          "redis"
+        ],
+        "note": "Redis 命中时直接返回，不触碰数据库——这是绝大多数请求走的路径。"
+      },
+      {
+        "id": "fallback",
+        "label": "未命中回源",
+        "focus": [
+          "api",
+          "redis",
+          "db"
+        ],
+        "note": "缓存未命中才查询 PostgreSQL，拿到权威数据。"
+      },
+      {
+        "id": "backfill",
+        "label": "回填与响应",
+        "focus": [
+          "db",
+          "api",
+          "redis",
+          "browser"
+        ],
+        "note": "结果写回缓存（带 TTL）供下次命中，再返回浏览器。"
+      }
+    ]
+  },
+  "participants": [
+    {
+      "id": "browser",
+      "type": "external",
+      "label": "浏览器",
+      "sublabel": "前端页面"
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "API 服务",
+      "sublabel": "请求处理层"
+    },
+    {
+      "id": "redis",
+      "type": "database",
+      "label": "Redis",
+      "sublabel": "缓存层"
+    },
+    {
+      "id": "db",
+      "type": "database",
+      "label": "PostgreSQL",
+      "sublabel": "权威数据源"
+    }
+  ],
+  "segments": [
+    {
+      "from": 158,
+      "to": 265,
+      "label": "请求与缓存优先"
+    },
+    {
+      "from": 278,
+      "to": 345,
+      "label": "未命中，回源查询"
+    },
+    {
+      "from": 360,
+      "to": 455,
+      "label": "回填缓存并响应"
+    }
+  ],
+  "messages": [
+    {
+      "id": "http-request",
+      "from": "browser",
+      "to": "api",
+      "y": 170,
+      "label": "GET /api/resource",
+      "variant": "emphasis"
+    },
+    {
+      "id": "cache-read",
+      "from": "api",
+      "to": "redis",
+      "y": 209,
+      "label": "GET cache:{key}",
+      "variant": "default",
+      "note": "缓存优先：先问 Redis，不直接查库"
+    },
+    {
+      "id": "cache-miss",
+      "from": "redis",
+      "to": "api",
+      "y": 248,
+      "label": "nil（未命中）",
+      "variant": "return"
+    },
+    {
+      "id": "db-query",
+      "from": "api",
+      "to": "db",
+      "y": 287,
+      "label": "SELECT ... WHERE id = ?",
+      "variant": "emphasis",
+      "note": "仅在未命中时才回源"
+    },
+    {
+      "id": "db-rows",
+      "from": "db",
+      "to": "api",
+      "y": 326,
+      "label": "结果行",
+      "variant": "return"
+    },
+    {
+      "id": "cache-write",
+      "from": "api",
+      "to": "redis",
+      "y": 365,
+      "label": "SET cache:{key} EX 300",
+      "variant": "dashed",
+      "note": "把回源结果序列化为缓存值回填，带 TTL 兜底一致性"
+    },
+    {
+      "id": "cache-ack",
+      "from": "redis",
+      "to": "api",
+      "y": 404,
+      "label": "OK",
+      "variant": "return"
+    },
+    {
+      "id": "http-response",
+      "from": "api",
+      "to": "browser",
+      "y": 443,
+      "label": "200 JSON",
+      "variant": "return"
+    }
+  ],
+  "activations": [
+    {
+      "participant": "browser",
+      "from": 163,
+      "to": 450,
+      "type": "external"
+    },
+    {
+      "participant": "api",
+      "from": 170,
+      "to": 447,
+      "type": "backend"
+    },
+    {
+      "participant": "redis",
+      "from": 204,
+      "to": 253,
+      "type": "database"
+    },
+    {
+      "participant": "db",
+      "from": 282,
+      "to": 331,
+      "type": "database"
+    },
+    {
+      "participant": "redis",
+      "from": 360,
+      "to": 409,
+      "type": "database"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "快路径（缓存命中）",
+      "items": [
+        "浏览器 → API → Redis 命中 → 直接返回，全程不碰数据库",
+        "响应时间从毫秒级数据库查询降到亚毫秒级内存读取",
+        "绝大多数请求走这条路径，数据库只承担首次与过期后的回源"
+      ]
+    },
+    {
+      "dot": "orange",
+      "title": "慢路径（本图所示）",
+      "items": [
+        "Redis 返回 nil 才查询 PostgreSQL——回源是例外不是常态",
+        "查到的权威数据先回填缓存再返回，让下一次请求走快路径",
+        "回填必须带 TTL：即使后续删缓存失败，脏数据也只在 TTL 内存在"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "必须防的三个问题",
+      "items": [
+        "穿透：查不存在的 key 反复打库 → 缓存空值（短 TTL）或布隆过滤器",
+        "击穿：热 key 过期瞬间大量回源 → 互斥重建，只放一个请求查库",
+        "雪崩：大批 key 同时过期 → TTL 加随机抖动，避免同时回源"
+      ]
+    }
+  ]
+}
