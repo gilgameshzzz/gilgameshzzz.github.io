@@ -1,0 +1,378 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "一个真实后端项目的高层系统架构（已脱敏）",
+    "locale": "zh-CN",
+    "output": "backend-system-architecture.html",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1080,
+      540
+    ],
+    "views": [
+      {
+        "id": "main-path",
+        "label": "1. 主请求路径",
+        "focus": [
+          "browser",
+          "gateway",
+          "biz_flow",
+          "mysql"
+        ],
+        "note": "浏览器 → 网关 → 业务服务 → 主库，全图只有这 3 段是 emphasis。"
+      },
+      {
+        "id": "trust",
+        "label": "2. 信任边界与鉴权",
+        "focus": [
+          "gateway",
+          "redis",
+          "user",
+          "biz_flow"
+        ],
+        "note": "网关是唯一公网入口：先查 Redis 会话，权限缓存未命中才回源用户服务。"
+      },
+      {
+        "id": "data",
+        "label": "3. 数据域与异步",
+        "focus": [
+          "biz_flow",
+          "biz_data",
+          "pg",
+          "kafka",
+          "minio"
+        ],
+        "note": "数据域承担空间库、对象存储与异步事件，不在同步请求链路上。"
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "browser",
+      "type": "external",
+      "label": "浏览器",
+      "sublabel": "Web 控制台",
+      "pos": [
+        20,
+        250
+      ],
+      "size": [
+        136,
+        58
+      ]
+    },
+    {
+      "id": "gateway",
+      "type": "security",
+      "label": "API 网关",
+      "sublabel": "Spring Cloud Gateway",
+      "pos": [
+        222,
+        250
+      ],
+      "size": [
+        136,
+        58
+      ],
+      "tag": "平台组"
+    },
+    {
+      "id": "biz_flow",
+      "type": "backend",
+      "label": "业务服务组 · 流程域",
+      "sublabel": "4 个微服务",
+      "pos": [
+        424,
+        250
+      ],
+      "size": [
+        136,
+        58
+      ],
+      "tag": "业务组"
+    },
+    {
+      "id": "biz_data",
+      "type": "backend",
+      "label": "业务服务组 · 数据域",
+      "sublabel": "4 个微服务",
+      "pos": [
+        626,
+        250
+      ],
+      "size": [
+        136,
+        58
+      ],
+      "tag": "业务组"
+    },
+    {
+      "id": "redis",
+      "type": "database",
+      "label": "Redis",
+      "sublabel": "会话 · 缓存 · 锁",
+      "pos": [
+        222,
+        80
+      ],
+      "size": [
+        136,
+        58
+      ],
+      "tag": "平台组"
+    },
+    {
+      "id": "registry",
+      "type": "cloud",
+      "label": "Nacos",
+      "sublabel": "注册与配置中心",
+      "pos": [
+        424,
+        80
+      ],
+      "size": [
+        136,
+        58
+      ],
+      "tag": "平台组"
+    },
+    {
+      "id": "kafka",
+      "type": "messagebus",
+      "label": "Kafka",
+      "sublabel": "异步事件总线",
+      "pos": [
+        626,
+        80
+      ],
+      "size": [
+        136,
+        58
+      ],
+      "tag": "平台组"
+    },
+    {
+      "id": "user",
+      "type": "backend",
+      "label": "用户权限服务",
+      "sublabel": "token / 权限源",
+      "pos": [
+        222,
+        420
+      ],
+      "size": [
+        136,
+        58
+      ],
+      "tag": "业务组"
+    },
+    {
+      "id": "mysql",
+      "type": "database",
+      "label": "MySQL",
+      "sublabel": "主业务库 / JPA",
+      "pos": [
+        424,
+        420
+      ],
+      "size": [
+        136,
+        58
+      ],
+      "tag": "DBA"
+    },
+    {
+      "id": "pg",
+      "type": "database",
+      "label": "PostgreSQL",
+      "sublabel": "空间 / 点云数据",
+      "pos": [
+        626,
+        420
+      ],
+      "size": [
+        136,
+        58
+      ],
+      "tag": "DBA"
+    },
+    {
+      "id": "minio",
+      "type": "cloud",
+      "label": "MinIO",
+      "sublabel": "对象存储",
+      "pos": [
+        828,
+        420
+      ],
+      "size": [
+        136,
+        58
+      ],
+      "tag": "DBA"
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "K8s 生产集群 · production",
+      "pad": 26,
+      "wraps": [
+        "gateway",
+        "biz_flow",
+        "biz_data",
+        "redis",
+        "registry",
+        "kafka",
+        "user",
+        "mysql",
+        "pg",
+        "minio"
+      ]
+    },
+    {
+      "kind": "security-group",
+      "label": "数据层 · 不暴露公网，仅集群内可达",
+      "pad": 15,
+      "wraps": [
+        "mysql",
+        "pg",
+        "minio"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "c1",
+      "from": "browser",
+      "to": "gateway",
+      "label": "HTTPS",
+      "variant": "emphasis"
+    },
+    {
+      "id": "c2",
+      "from": "gateway",
+      "to": "biz_flow",
+      "label": "转发",
+      "variant": "emphasis"
+    },
+    {
+      "id": "c3",
+      "from": "biz_flow",
+      "to": "mysql",
+      "label": "SQL",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [
+        492,
+        364.0
+      ]
+    },
+    {
+      "id": "c4",
+      "from": "gateway",
+      "to": "redis",
+      "label": "校验会话",
+      "variant": "security",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "c5",
+      "from": "gateway",
+      "to": "user",
+      "label": "权限回源",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [
+        290,
+        364.0
+      ]
+    },
+    {
+      "id": "c6",
+      "from": "biz_flow",
+      "to": "registry",
+      "label": "注册 / 拉配置",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "c7",
+      "from": "biz_flow",
+      "to": "biz_data",
+      "label": "OpenFeign"
+    },
+    {
+      "id": "c8",
+      "from": "biz_data",
+      "to": "kafka",
+      "label": "异步事件",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "c9",
+      "from": "biz_data",
+      "to": "pg",
+      "label": "空间查询",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [
+        694,
+        364.0
+      ]
+    },
+    {
+      "id": "c10",
+      "from": "biz_data",
+      "to": "minio",
+      "label": "对象读写",
+      "fromSide": "right",
+      "toSide": "top",
+      "via": [
+        [
+          896.0,
+          279.0
+        ]
+      ]
+    }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "信任边界怎么划",
+      "items": [
+        "网关是唯一公网入口",
+        "token 存 Redis，不是 JWT",
+        "权限缓存未命中才回源用户服务",
+        "外部审批回调走免认证白名单"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "两套库 + 一套事件",
+      "items": [
+        "MySQL 承载流程与元数据",
+        "PostgreSQL 承载空间与点云",
+        "Kafka 只做异步解耦",
+        "不在任何同步请求链路上"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "没画进连线的事实",
+      "items": [
+        "服务间共 7 个 Feign 客户端",
+        "对象存储走签名 URL 直传",
+        "Redis 兼作分布式锁",
+        "注册中心路由变更可热更新"
+      ]
+    }
+  ]
+}
