@@ -167,7 +167,7 @@ const jsonLd = {
             }
 
 
-            <Markdown class="mb-6 markdown-content onload-animation">
+            <Markdown class="mb-6 markdown-content onload-animation" pagefind={!encrypted}>
                 {encrypted ? <EncryptedContent payload={encrypted} slug={entry.slug} /> : <Content />}
             </Markdown>
 

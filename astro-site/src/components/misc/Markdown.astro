@@ -4,10 +4,18 @@ import "@fontsource-variable/jetbrains-mono/wght-italic.css";
 
 interface Props {
 	class: string;
+	/** 是否让 pagefind 索引这块正文。加密文章必须传 false ——
+	    否则索引进去的是锁屏文案和整坨 base64 密文:既搜不出有用结果,
+	    又把索引体积撑爆。文章标题另有 data-pagefind-body,仍然搜得到入口。 */
+	pagefind?: boolean;
 }
 const className = Astro.props.class;
+const { pagefind = true } = Astro.props;
 ---
-<div data-pagefind-body class={`prose dark:prose-invert prose-base !max-w-none custom-md ${className}`}>
+<div
+    {...pagefind ? { "data-pagefind-body": true } : { "data-pagefind-ignore": true }}
+    class={`prose dark:prose-invert prose-base !max-w-none custom-md ${className}`}
+>
     <!--<div class="prose dark:prose-invert max-w-none custom-md">-->
     <!--<div class="max-w-none custom-md">-->
     <slot/>

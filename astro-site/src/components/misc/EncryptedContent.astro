@@ -62,6 +62,18 @@ const { payload, slug } = Astro.props;
 </encrypted-post>
 
 <script>
+/* 已解锁文章的密码缓存。
+ *
+ * 刻意只放在模块作用域的内存里,不进 sessionStorage ——
+ * 把明文密码写进浏览器存储,等于任何能跑 JS 的东西(扩展、XSS、
+ * 共用这台电脑的人)都能原样读走,而这些密码是跨文章复用的。
+ *
+ * 本站用 swup 做客户端路由,站内跳转不重载 JS 上下文,所以这个 Map
+ * 在整个浏览期间都活着,体验和 sessionStorage 几乎没区别;
+ * 只有硬刷新或新开标签页才需要重输 —— 这个代价是值得的。
+ */
+const unlocked = new Map<string, string>();
+
 class EncryptedPost extends HTMLElement {
     connectedCallback() {
         const form = this.querySelector<HTMLFormElement>(".unlock-form");
@@ -73,7 +85,9 @@ class EncryptedPost extends HTMLElement {
         if (!form || !input || !btn || !err || !lock || !out) return;
 
         const slug = this.dataset.slug || "";
-        const storeKey = `post-pwd:${slug}`;
+
+        // 旧版本把明文密码写进过 sessionStorage,这里顺手擦掉
+        try { sessionStorage.removeItem(`post-pwd:${slug}`); } catch {}
 
         const b64 = (s: string) =>
             Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
@@ -128,8 +142,8 @@ class EncryptedPost extends HTMLElement {
                 // PBKDF2 31 万轮在主线程上会卡一下,先让浏览器把 loading 态画出来
                 await new Promise((r) => setTimeout(r, 16));
                 const html = await decrypt(pwd);
-                // 本次会话内记住,刷新不用重输;关掉标签页即失效
-                try { sessionStorage.setItem(storeKey, pwd); } catch {}
+                // 仅本次浏览期间记住,站内跳转回来不用重输;刷新即失效
+                unlocked.set(slug, pwd);
                 reveal(html);
             } catch {
                 err.textContent = "密码不正确";
@@ -142,15 +156,14 @@ class EncryptedPost extends HTMLElement {
 
         form.addEventListener("submit", submit);
 
-        // 同一会话内已解锁过就直接还原
-        let saved: string | null = null;
-        try { saved = sessionStorage.getItem(storeKey); } catch {}
+        // 本次浏览期间已解锁过就直接还原(swup 站内跳转会走到这里)
+        const saved = unlocked.get(slug);
         if (saved) {
             decrypt(saved)
                 .then(reveal)
                 .catch(() => {
                     // 密码已轮换,清掉旧的
-                    try { sessionStorage.removeItem(storeKey); } catch {}
+                    unlocked.delete(slug);
                 });
         }
     }
