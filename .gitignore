@@ -24,3 +24,8 @@ hexo_blog/db.json
 /posts/
 /assets/
 /新建文本文档.txt
+
+# 加密文章:明文草稿与密码,绝不进仓库
+# 仓库里只保留 astro-site/src/content/posts/ 下的存根和 astro-site/encrypted/ 下的密文
+astro-site/private/
+astro-site/secrets/post-passwords.json

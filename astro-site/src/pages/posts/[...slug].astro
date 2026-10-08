@@ -15,6 +15,15 @@ import ImageWrapper from "../../components/misc/ImageWrapper.astro";
 import PostMetadata from "../../components/PostMeta.astro";
 import { profileConfig, siteConfig } from "../../config";
 import { encryptContent, getPasswordForSlug } from "../../utils/crypto-utils";
+import { loadDraft } from "../../utils/draft-loader";
+import {
+	fingerprint,
+	getSealedFingerprint,
+	readPayload,
+	setSealedFingerprint,
+	writePayload,
+} from "../../utils/encrypted-store";
+import type { StoredPayload } from "../../utils/encrypted-store";
 import { formatDateToYYYYMMDD } from "../../utils/date-utils";
 
 export async function getStaticPaths() {
@@ -30,21 +39,56 @@ const { Content, headings } = await entry.render();
 
 const { remarkPluginFrontmatter } = await entry.render();
 
-// 加密文章: 构建期把渲染好的 HTML 加密,页面里只留密文。
-// 密码来自被 gitignore 的 secrets/post-passwords.json,不进仓库。
-let encrypted: ReturnType<typeof encryptContent> | null = null;
+/* 加密文章。
+   src/content/posts/<slug>.md 只是个存根(只有 front-matter,正文为空),
+   明文正文在被 gitignore 的 private/drafts/<slug>.md 里。
+
+   本地(有草稿 + 有密码):渲染草稿 → 加密 → 把载荷写到 encrypted/<slug>.json。
+     指纹没变就跳过,避免每次构建都产生一个全新密文的噪音 diff。
+   CI(两者都没有):直接读已提交的载荷,构建不需要密码。
+   都没有:构建失败。宁可挂掉也绝不明文发布。 */
+let encrypted: StoredPayload | null = null;
 if (entry.data.protected) {
+	const draft = await loadDraft(entry.slug);
 	const password = getPasswordForSlug(entry.slug);
-	if (!password) {
+	const stored = readPayload(entry.slug);
+
+	if (draft && password) {
+		const container = await AstroContainer.create();
+		const html = await container.renderToString(draft.Content);
+		const fp = fingerprint(html, password);
+
+		if (stored && !process.env.SEAL_FORCE && getSealedFingerprint(entry.slug) === fp) {
+			encrypted = stored;
+		} else {
+			// hint 不写进载荷(唯一来源是存根 front-matter,免得两处不同步),
+			// 渲染前再从 front-matter 补上
+			encrypted = {
+				...encryptContent(html, password, ""),
+				words: draft.words,
+				minutes: draft.minutes,
+			};
+			writePayload(entry.slug, encrypted);
+			setSealedFingerprint(entry.slug, fp);
+		}
+	} else if (stored) {
+		encrypted = stored;
+	} else {
 		throw new Error(
-			`文章 "${entry.slug}" 标记了 protected: true,但 secrets/post-passwords.json 里没有对应密码。\n` +
-				"请添加后重新构建,否则正文会明文发布。",
+			`文章 "${entry.slug}" 标记了 protected: true,但既没有可用的草稿+密码,也没有已提交的密文载荷。\n` +
+				`  草稿: private/drafts/${entry.slug}.md  ${draft ? "有" : "缺失"}\n` +
+				`  密码: secrets/post-passwords.json      ${password ? "有" : "缺失"}\n` +
+				`  密文: encrypted/${entry.slug}.json     缺失\n` +
+				"补齐后重新构建。构建在此中止,以免正文明文发布。",
 		);
 	}
-	const container = await AstroContainer.create();
-	const html = await container.renderToString(Content);
-	encrypted = encryptContent(html, password, entry.data.passwordHint);
+
+	// 载荷里不存 hint,渲染时从存根 front-matter 现取
+	encrypted = { ...encrypted, hint: entry.data.passwordHint };
 }
+
+const words = encrypted ? encrypted.words : remarkPluginFrontmatter.words;
+const minutes = encrypted ? encrypted.minutes : remarkPluginFrontmatter.minutes;
 
 const jsonLd = {
 	"@context": "https://schema.org",
@@ -71,19 +115,21 @@ const jsonLd = {
             {}
         ]}>
             <!-- word count and reading time -->
-            {!encrypted && <div class="flex flex-row text-black/30 dark:text-white/30 gap-5 mb-3 transition onload-animation">
+            {/* 加密文章的字数/时长来自密文载荷(存根正文是空的,算不出来);
+                两者都没有时整块不渲染,不显示 0 字 */}
+            {words > 0 && <div class="flex flex-row text-black/30 dark:text-white/30 gap-5 mb-3 transition onload-animation">
                 <div class="flex flex-row items-center">
                     <div class="transition h-6 w-6 rounded-md bg-black/5 dark:bg-white/10 text-black/50 dark:text-white/50 flex items-center justify-center mr-2">
                         <Icon name="material-symbols:notes-rounded"></Icon>
                     </div>
-                    <div class="text-sm">{remarkPluginFrontmatter.words} {" " + i18n(I18nKey.wordsCount)}</div>
+                    <div class="text-sm">{words} {" " + i18n(I18nKey.wordsCount)}</div>
                 </div>
                 <div class="flex flex-row items-center">
                     <div class="transition h-6 w-6 rounded-md bg-black/5 dark:bg-white/10 text-black/50 dark:text-white/50 flex items-center justify-center mr-2">
                         <Icon name="material-symbols:schedule-outline-rounded"></Icon>
                     </div>
                     <div class="text-sm">
-                        {remarkPluginFrontmatter.minutes} {" " + i18n(remarkPluginFrontmatter.minutes === 1 ? I18nKey.minuteCount : I18nKey.minutesCount)}
+                        {minutes} {" " + i18n(minutes === 1 ? I18nKey.minuteCount : I18nKey.minutesCount)}
                     </div>
                 </div>
             </div>}

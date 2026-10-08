@@ -11,6 +11,9 @@
     "astro": "astro",
     "type-check": "tsc --noEmit --isolatedDeclarations",
     "new-post": "node scripts/new-post.js",
+    "seal": "node scripts/sync-stubs.mjs && astro build && node scripts/assert-no-plaintext.mjs",
+    "reseal": "node scripts/reseal.mjs",
+    "check:sealed": "node scripts/assert-sealed.mjs",
     "format": "biome format --write ./src",
     "lint": "biome check --write ./src",
     "preinstall": "npx only-allow pnpm"
