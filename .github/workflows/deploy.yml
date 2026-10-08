@@ -21,8 +21,6 @@ defaults:
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      POST_PASSWORDS: ${{ secrets.POST_PASSWORDS }}
     steps:
       - uses: actions/checkout@v5
 
@@ -38,11 +36,11 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Restore encrypted post passwords
-        if: env.POST_PASSWORDS != ''
-        run: |
-          mkdir -p secrets
-          printf '%s' "$POST_PASSWORDS" > secrets/post-passwords.json
+      # 加密文章只提交密文,CI 不需要密码。
+      # 这一步守住两件事:存根正文必须是空的、密文载荷必须在。
+      # pre-commit hook 不随仓库分发,所以这里才是真正的防线。
+      - name: Assert encrypted posts are sealed
+        run: node scripts/assert-sealed.mjs
 
       - run: pnpm build
 
